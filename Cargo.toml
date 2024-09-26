@@ -1,0 +1,7 @@
+[package]
+name = "lanis-rs"
+version = "0.1.0"
+authors = ["Rajala1404"]
+edition = "2021"
+
+[dependencies]
