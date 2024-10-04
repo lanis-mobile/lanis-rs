@@ -13,19 +13,6 @@ pub struct School {
     pub city: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct JsonSchool {
-    id: String,
-    name: String,
-    ort: String,
-}
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct JsonSchools {
-    schulen: Vec<JsonSchool>
-}
-
 /// Returns the ID of a school based on name and city and takes a HashMap of all schools <br> Returns -1 if no school was found
 pub async fn get_school_id(name: &str, city: &str, schools: &Vec<School>) -> i32 {
     for school in schools {
@@ -40,6 +27,19 @@ pub async fn get_school_id(name: &str, city: &str, schools: &Vec<School>) -> i32
 
 /// If school.json already exists and <code>force_refresh</code> is <code>true</code> school.json will be overwritten
 pub async fn get_schools(force_refresh: bool) -> Vec<School> {
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    pub struct JsonSchool {
+        id: String,
+        name: String,
+        ort: String,
+    }
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct JsonSchools {
+        schulen: Vec<JsonSchool>
+    }
+
     let client = reqwest::Client::new();
     let mut schools: Vec<School> = vec![];
     if fs::exists("/tmp/lanis-rs/schools.json").unwrap() && force_refresh {
