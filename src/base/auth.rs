@@ -9,6 +9,10 @@ pub struct Account {
     pub password: String,
 }
 
+/**
+ *  Takes an account and a 'reqwest' client and generates a new session for lanis <br>
+ *  Needs to be run on every new 'reqwest' client
+ */
 pub async fn create_session(account: &Account, client: &Client) -> Result<(), String> {
     let params= [("user2", account.username.clone()), ("user", format!("{}.{}", account.school_id, account.username.clone())), ("password", account.password.clone())];
     let response = client.post(URL::LOGIN.to_owned() + &*format!("?i={}", account.school_id)).form(&params).send();
