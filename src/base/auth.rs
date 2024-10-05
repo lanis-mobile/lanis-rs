@@ -1,6 +1,7 @@
 use reqwest::{Client, StatusCode};
 use std::string::String;
 use reqwest::header::LOCATION;
+use reqwest_cookie_store::CookieStoreMutex;
 use crate::utils::constants::URL;
 
 pub struct Account {
@@ -48,6 +49,32 @@ pub async fn create_session(account: &Account, client: &Client) -> Result<(), St
         }
         Err(e) => {
             Err(format!("Failed to get response from '{}':\n{}", URL::LOGIN, e))
+        }
+    }
+}
+
+/**
+ *  Refreshes the session to prevent getting logged out
+ *  <br> Needs to be called periodically e.g. every 10 seconds
+ */
+pub async fn prevent_logout(client: &Client, cookie_store: &CookieStoreMutex,) -> Result<(), String> {
+    let sid: String = {
+        let cs = cookie_store.lock().unwrap();
+        let mut result = "NONE".to_string();
+        for cookie in cs.iter_any() {
+            if cookie.name() == "sid" {
+                result = cookie.value().to_string();
+            }
+        }
+        result
+    };
+    let param = [("name", sid)];
+    match client.get(URL::LOGIN_AJAX).form(&param).send().await {
+        Ok(_) => {
+            Ok(())
+        }
+        Err(e) => {
+            Err(format!("Failed to refresh session:\n{}", e).to_string())
         }
     }
 }

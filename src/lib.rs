@@ -9,7 +9,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 mod tests {
     use std::env;
     use reqwest::redirect::Policy;
-    use crate::base::auth::{create_session, Account};
+    use crate::base::auth::{create_session, prevent_logout, Account};
     use crate::base::schools::{get_school_id, get_schools, School};
     use super::*;
 
@@ -110,5 +110,45 @@ mod tests {
 
         assert_eq!(result.get(0).unwrap(), "SPH-Session");
         assert_eq!(result.get(1).unwrap(), "sid");
+    }
+    #[tokio::test]
+    async fn test_prevent_logout() {
+        let cookie_store = reqwest_cookie_store::CookieStore::new(None);
+        let cookie_store = reqwest_cookie_store::CookieStoreMutex::new(cookie_store);
+        let cookie_store = std::sync::Arc::new(cookie_store);
+
+        let client = reqwest::Client::builder()
+            .redirect(Policy::none())
+            .cookie_provider(std::sync::Arc::clone(&cookie_store))
+            .build()
+            .unwrap();
+
+        let account = Account {
+            school_id: {
+                env::var("LANIS_SCHOOL_ID").unwrap_or_else(|e| {
+                    println!("Error ({})\nDid you define 'LANIS_SCHOOL_ID' in env?", e);
+                    String::from("0")
+                }).parse().expect("Couldn't parse 'LANIS_SCHOOL_ID'.\nDid you define SCHOOL_ID as an i32?")
+            },
+            username: {
+                env::var("LANIS_USERNAME").unwrap_or_else(|e| {
+                    println!("Error ({})\nDid you define 'LANIS_USERNAME' in env?", e);
+                    String::from("")
+                })
+            },
+            password:  {
+                env::var("LANIS_PASSWORD").unwrap_or_else(|e| {
+                    println!("Error ({})\nDid you define 'LANIS_PASSWORD' in env?", e);
+                    String::from("")
+                })
+            },
+        };
+
+        if !create_session(&account, &client).await.is_ok() {
+            println!("Wrong login credentials!")
+        }
+
+        let result = prevent_logout(&client, &cookie_store).await;
+        assert_eq!(result.is_ok(), true);
     }
 }

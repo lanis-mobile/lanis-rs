@@ -4,6 +4,7 @@ pub struct URL;
 impl URL {
     pub const BASE: &'static str = "https://start.schulportal.hessen.de/";
     pub const LOGIN: &'static str = "https://login.schulportal.hessen.de/#";
+    pub const LOGIN_AJAX: &'static str = "https://start.schulportal.hessen.de/ajax_login.php";
     pub const CONNECT: &'static str = "https://connect.schulportal.hessen.de/";
     pub const SCHOOLS: &'static str = "https://startcache.schulportal.hessen.de/exporteur.php";
 
