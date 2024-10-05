@@ -9,7 +9,7 @@ pub struct Account {
     pub password: String,
 }
 
-pub(crate) async fn create_session(account: &Account, client: &Client) -> Result<(), String> {
+pub async fn create_session(account: &Account, client: &Client) -> Result<(), String> {
     let params= [("user2", account.username.clone()), ("user", format!("{}.{}", account.school_id, account.username.clone())), ("password", account.password.clone())];
     let response = client.post(URL::LOGIN.to_owned() + &*format!("?i={}", account.school_id)).form(&params).send();
     match response.await {
