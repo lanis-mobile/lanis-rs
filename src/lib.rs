@@ -9,7 +9,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 mod tests {
     use std::env;
     use reqwest::redirect::Policy;
-    use crate::base::auth::{create_new_session, Account};
+    use crate::base::auth::{create_new_session_sub_step_1, Account};
     use crate::base::schools::{get_school_id, get_schools, School};
     use super::*;
 
@@ -82,7 +82,7 @@ mod tests {
             },
         };
 
-        if !create_new_session(&account, &client).await {
+        if !create_new_session_sub_step_1(&account, &client).await {
             println!("Wrong login credentials!")
         }
 

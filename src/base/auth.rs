@@ -9,7 +9,7 @@ pub struct Account {
 }
 
 /// Returns true if everything worked
-pub async fn create_new_session(account: &Account, client: &Client) -> bool {
+pub(crate) async fn create_new_session_sub_step_1(account: &Account, client: &Client) -> bool {
     let mut result = false;
     let params= [("user2", account.username.clone()), ("user", format!("{}.{}", account.school_id, account.username.clone())), ("password", account.password.clone())];
     let response = client.post(URL::LOGIN.to_owned() + &*format!("?i={}", account.school_id)).form(&params).send();
