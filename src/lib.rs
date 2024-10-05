@@ -7,6 +7,9 @@ pub fn add(left: u64, right: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use reqwest::redirect::Policy;
+    use crate::base::auth::{create_new_session, Account};
     use crate::base::schools::{get_school_id, get_schools, School};
     use super::*;
 
@@ -40,7 +43,60 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_schools() {
-        let result = get_schools(true).await;
+        let client = reqwest::Client::new();
+
+        let result = get_schools(true, client).await;
         assert_eq!(result.get(0).unwrap().id, 3354)
+    }
+
+    #[tokio::test]
+    async fn test_get_session() {
+        let cookie_store = reqwest_cookie_store::CookieStore::new(None);
+        let cookie_store = reqwest_cookie_store::CookieStoreMutex::new(cookie_store);
+        let cookie_store = std::sync::Arc::new(cookie_store);
+
+        let client = reqwest::Client::builder()
+            .redirect(Policy::none())
+            .cookie_provider(std::sync::Arc::clone(&cookie_store))
+            .build()
+            .unwrap();
+
+        let account = Account {
+            school_id: {
+                env::var("LANIS_SCHOOL_ID").unwrap_or_else(|e| {
+                    println!("Error ({})\nDid you define 'LANIS_SCHOOL_ID' in env?", e);
+                    String::from("0")
+                }).parse().expect("Couldn't parse 'LANIS_SCHOOL_ID'.\nDid you define SCHOOL_ID as an i32?")
+            },
+            username: {
+                env::var("LANIS_USERNAME").unwrap_or_else(|e| {
+                    println!("Error ({})\nDid you define 'LANIS_USERNAME' in env?", e);
+                    String::from("")
+                })
+            },
+            password:  {
+                env::var("LANIS_PASSWORD").unwrap_or_else(|e| {
+                    println!("Error ({})\nDid you define 'LANIS_PASSWORD' in env?", e);
+                    String::from("")
+                })
+            },
+        };
+
+        if !create_new_session(&account, &client).await {
+            println!("Wrong login credentials!")
+        }
+
+        let result: &str = {
+            let store = cookie_store.lock().unwrap();
+            let mut result = "NONE";
+            for cookie in store.iter_any() {
+                if cookie.name() == "SPH-Session" {
+                    result = cookie.name()
+                }
+            }
+            &*result.to_owned()
+        };
+
+        assert_eq!(result, "SPH-Session");
     }
 }

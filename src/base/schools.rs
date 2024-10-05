@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-use std::{fs, env};
+use std::{fs};
 use std::io::{Read, Write};
-use log::{debug, error, logger, Log};
+use reqwest::Client;
 use serde::{Deserialize};
 use crate::utils::constants::URL;
 
@@ -26,7 +25,7 @@ pub async fn get_school_id(name: &str, city: &str, schools: &Vec<School>) -> i32
 }
 
 /// If school.json already exists and <code>force_refresh</code> is <code>true</code> school.json will be overwritten
-pub async fn get_schools(force_refresh: bool) -> Vec<School> {
+pub async fn get_schools(force_refresh: bool, client: Client) -> Vec<School> {
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     pub struct JsonSchool {
@@ -39,8 +38,6 @@ pub async fn get_schools(force_refresh: bool) -> Vec<School> {
     struct JsonSchools {
         schulen: Vec<JsonSchool>
     }
-
-    let client = reqwest::Client::new();
     let mut schools: Vec<School> = vec![];
     if fs::exists("/tmp/lanis-rs/schools.json").unwrap() && force_refresh {
         fs::remove_file("/tmp/lanis-rs/schools.json").unwrap();
@@ -52,7 +49,6 @@ pub async fn get_schools(force_refresh: bool) -> Vec<School> {
         let response = client.get(URL::SCHOOLS).query(&[("a", "schoollist")]).send();
         match response.await {
             Ok(response) => {
-                debug!("{:?}", response);
                 match response.text().await {
                     Ok(response) => {
                         let file = fs::File::create("/tmp/lanis-rs/schools.json");

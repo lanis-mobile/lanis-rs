@@ -3,7 +3,7 @@ pub struct URL;
 /// Just a collection of URLS
 impl URL {
     pub const BASE: &'static str = "https://start.schulportal.hessen.de/";
-    pub const LOGIN: &'static str = "https://login.schulportal.hessen.de/";
+    pub const LOGIN: &'static str = "https://login.schulportal.hessen.de/#";
     pub const CONNECT: &'static str = "https://connect.schulportal.hessen.de/";
     pub const SCHOOLS: &'static str = "https://startcache.schulportal.hessen.de/exporteur.php";
 
