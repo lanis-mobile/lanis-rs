@@ -12,7 +12,7 @@ pub struct School {
     pub city: String,
 }
 
-/// Returns the ID of a school based on name and city and takes a HashMap of all schools <br> Returns -1 if no school was found
+/// Returns the ID of a school based on name and city and takes a Vector of all schools <br> Returns -1 if no school was found
 pub async fn get_school_id(name: &str, city: &str, schools: &Vec<School>) -> i32 {
     for school in schools {
         if school.city == city {

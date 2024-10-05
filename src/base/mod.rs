@@ -1,2 +1,2 @@
 pub mod schools;
-pub mod auth;
+pub mod account;

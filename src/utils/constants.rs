@@ -9,4 +9,6 @@ impl URL {
     pub const SCHOOLS: &'static str = "https://startcache.schulportal.hessen.de/exporteur.php";
 
     pub const START: &'static str = "https://start.schulportal.hessen.de/startseite.php";
+
+    pub const USER_DATA: &'static str = "https://start.schulportal.hessen.de/benutzerverwaltung.php";
 }
