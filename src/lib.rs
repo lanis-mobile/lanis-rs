@@ -9,7 +9,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 mod tests {
     use std::env;
     use reqwest::redirect::Policy;
-    use crate::base::auth::{create_new_session_sub_step_1, Account};
+    use crate::base::auth::{create_session, Account};
     use crate::base::schools::{get_school_id, get_schools, School};
     use super::*;
 
@@ -50,7 +50,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_session() {
+    async fn test_create_session() {
         let cookie_store = reqwest_cookie_store::CookieStore::new(None);
         let cookie_store = reqwest_cookie_store::CookieStoreMutex::new(cookie_store);
         let cookie_store = std::sync::Arc::new(cookie_store);
@@ -82,11 +82,12 @@ mod tests {
             },
         };
 
-        if !create_new_session_sub_step_1(&account, &client).await {
+        if !create_session(&account, &client).await.is_ok() {
             println!("Wrong login credentials!")
         }
 
-        let result: &str = {
+        let mut result = vec![];
+        result.push({
             let store = cookie_store.lock().unwrap();
             let mut result = "NONE";
             for cookie in store.iter_any() {
@@ -95,8 +96,19 @@ mod tests {
                 }
             }
             &*result.to_owned()
-        };
+        }.to_string());
+        result.push({
+            let store = cookie_store.lock().unwrap();
+            let mut result = "NONE";
+            for cookie in store.iter_any() {
+                if cookie.name() == "sid" {
+                    result = cookie.name()
+                }
+            }
+            &*result.to_owned()
+        }.to_string());
 
-        assert_eq!(result, "SPH-Session");
+        assert_eq!(result.get(0).unwrap(), "SPH-Session");
+        assert_eq!(result.get(1).unwrap(), "sid");
     }
 }
