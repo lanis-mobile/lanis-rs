@@ -51,8 +51,9 @@ mod tests {
         assert_eq!(result.get(0).unwrap().id, 3354)
     }
 
+    // This test everything that's bound to student accounts
     #[tokio::test]
-    async fn test_account() {
+    async fn test_student_account() {
         let cookie_store = reqwest_cookie_store::CookieStore::new(None);
         let cookie_store = reqwest_cookie_store::CookieStoreMutex::new(cookie_store);
         let cookie_store = std::sync::Arc::new(cookie_store);
