@@ -12,6 +12,7 @@ mod tests {
     use reqwest::redirect::Policy;
     use crate::base::account::Account;
     use crate::base::schools::{get_school_id, get_schools, School};
+    use crate::modules::lessons::{get_lessons};
     use super::*;
 
     #[test]
@@ -93,6 +94,8 @@ mod tests {
 
         account.data = Option::from(account.fetch_account_data(&client).await.unwrap());
         account.type_a = Option::from(account.get_type().await.unwrap());
+
+        let lessons = get_lessons(&client).await.unwrap();
 
         assert_eq!(account.data.is_some(), true);
         assert_eq!(account.type_a.is_some(), true);
