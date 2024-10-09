@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use crate::utils::constants::URL;
 use reqwest::Client;
 use scraper::{ElementRef, Html, Selector};
 use std::time::SystemTime;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Lessons {
     pub lessons: Vec<Lesson>,
 }
@@ -15,6 +16,7 @@ pub struct Lesson {
     pub name: String,
     pub teacher: String,
     pub teacher_short: Option<String>,
+    pub attendances: Option<HashMap<String, String>>,
     pub entry_latest: Option<LessonEntry>,
     pub entries: Option<Vec<LessonEntry>>,
 }
@@ -78,6 +80,7 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                         name,
                                         teacher,
                                         teacher_short: None,
+                                        attendances: Some(HashMap::new()),
                                         entry_latest: None,
                                         entries: None,
                                     })
@@ -138,6 +141,58 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                     }
                                 }
                             }
+
+                            let attendance_selector = Selector::parse("#anwesend").unwrap();
+                            let thead_selector = Selector::parse("thead > tr").unwrap();
+                            let tbody_selector = Selector::parse("tbody > tr").unwrap();
+                            // let hidden_div_selector = Selector::parse("div.hidden.hidden_encoded").unwrap();
+                            let link_selector = Selector::parse("a").unwrap();
+
+                            let attendance_element = document.select(&attendance_selector).next().unwrap();
+                            let thead_element = attendance_element.select(&thead_selector).next().unwrap();
+
+                            let keys: Vec<String> = thead_element.select(&Selector::parse("th").unwrap()).map(|el| el.text().collect::<String>().trim().to_string()).collect();
+
+                            for row in attendance_element.select(&tbody_selector) {
+                                let mut text_elements: Vec<String> = vec![];
+                                let mut attendances: HashMap<String, String> = HashMap::new();
+
+
+                                for element in row.child_elements() {
+                                    if let Some(attr) = element.attr("class") {
+                                        if attr.contains("hidden") && attr.contains("hidden_encoded") {
+                                            continue
+                                        }
+                                    }
+                                    text_elements.push(element.text().collect::<String>().trim().to_string());
+                                }
+
+                                for (i, key) in keys.iter().enumerate() {
+                                    let key_lower = key.to_lowercase();
+                                    let mut value = text_elements.get(i).unwrap_or(&"".to_string()).clone();
+
+                                    if ["kurs", "lehrkraft"].contains(&key_lower.as_str()) {
+                                        continue;
+                                    }
+
+                                    if value.is_empty() {
+                                        value = "0".to_string();
+                                    }
+
+                                    attendances.insert(key_lower, value);
+                                }
+
+                                if let Some(hyperlink) = row.select(&link_selector).next() {
+                                    let course_url = hyperlink.value().attr("href").unwrap_or("");
+                                    for lesson in &mut lessons.lessons {
+                                        if course_url.contains(&lesson.id) {
+                                            lesson.attendances = Some(attendances);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
                             Ok(lessons)
                         } else {
                             Err("Failed to select rows from lesson folders".to_string())

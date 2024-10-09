@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use reqwest::{Client, StatusCode};
-use std::string::String;
-use reqwest::header::LOCATION;
-use reqwest_cookie_store::CookieStoreMutex;
-use scraper::{Html, Selector};
 use crate::base::account::AccountType::{Student, Teacher};
 use crate::utils::constants::URL;
+use reqwest::header::LOCATION;
+use reqwest::{Client, StatusCode};
+use reqwest_cookie_store::CookieStoreMutex;
+use scraper::{Html, Selector};
+use std::collections::HashMap;
+use std::string::String;
 
 #[derive(Debug)]
 pub enum AccountType {
@@ -29,7 +29,7 @@ impl Account {
      *  Needs to be run on every new 'reqwest' client
      */
     pub async fn create_session(&self, client: &Client) -> Result<(), String> {
-        let params= [("user2", self.username.clone()), ("user", format!("{}.{}", self.school_id, self.username.clone())), ("password", self.password.clone())];
+        let params = [("user2", self.username.clone()), ("user", format!("{}.{}", self.school_id, self.username.clone())), ("password", self.password.clone())];
         let response = client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school_id)).form(&params).send();
         match response.await {
             Ok(response) => {
@@ -56,8 +56,7 @@ impl Account {
                             Err(format!("{} {}", e, response.status()))
                         }
                     }
-                }
-                else {
+                } else {
                     Err(format!("Login failed with status code {}", response.status().as_u16()))
                 }
             }
@@ -71,7 +70,7 @@ impl Account {
      *  Refreshes the session to prevent getting logged out
      *  <br> Needs to be called periodically e.g. every 10 seconds
      */
-    pub async fn prevent_logout(&self, client: &Client, cookie_store: &CookieStoreMutex,) -> Result<(), String> {
+    pub async fn prevent_logout(&self, client: &Client, cookie_store: &CookieStoreMutex) -> Result<(), String> {
         let sid: String = {
             let cs = cookie_store.lock().unwrap();
             let mut result = "NONE".to_string();
