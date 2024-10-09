@@ -98,6 +98,10 @@ mod tests {
 
         let lessons = get_lessons(&client).await.unwrap();
 
+        for lesson in lessons.lessons.iter() {
+            println!("{:?}", &lesson);
+        }
+
         assert_eq!(account.data.is_some(), true);
         assert_eq!(account.type_a.is_some(), true);
 

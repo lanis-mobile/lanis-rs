@@ -8,17 +8,18 @@ pub struct Lessons {
     pub lessons: Vec<Lesson>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Lesson {
     pub id: String,
     pub url: String,
     pub name: String,
     pub teacher: String,
+    pub teacher_short: Option<String>,
     pub entry_latest: Option<LessonEntry>,
     pub entries: Option<Vec<LessonEntry>>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LessonEntry {
     pub id: String,
     pub date: String,
@@ -30,20 +31,20 @@ pub struct LessonEntry {
     pub uploads: Option<LessonUpload>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Attachment {
     pub name: String,
     pub url: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Homework {
     pub description: String,
     pub completed: bool,
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LessonUpload {
     pub url: String,
 }
@@ -75,6 +76,7 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                         url,
                                         name,
                                         teacher,
+                                        teacher_short: None,
                                         entry_latest: None,
                                         entries: None,
                                     })
@@ -86,16 +88,13 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                             let school_classes = document.select(&school_classes_selector);
                             for school_class in school_classes {
                                 let teacher_selector = Selector::parse(".teacher").unwrap();
-                                let teacher = school_class.select(&teacher_selector).next();
 
                                 if let Some(date) = school_class.select(&Selector::parse(".datum").unwrap()).next() {
                                     fn collect_text(element_ref: Option<ElementRef>) -> Result<String, ()> {
                                         match element_ref {
                                             Some(element_ref) => {
-                                                match element_ref.text().collect::<String>().trim().to_string() {
-                                                    Ok(s) => Ok(s),
-                                                    Err(_) => Err(())
-                                                }
+                                                let s = element_ref.text().collect::<String>().trim().to_string();
+                                                Ok(s)
                                             }
                                             None => Err(())
                                         }
@@ -106,8 +105,7 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                     let teacher_short_selector =  Selector::parse(".teacher .btn.btn-primary.dropdown-toggle.btn-xs").unwrap();
                                     let teacher_short = collect_text(school_class.select(&teacher_short_selector).next()).unwrap_or("".to_string());
 
-                                    let teacher_name_selector = Selector::parse(".teacher ul>li>a>i.fa").unwrap();
-                                    let teacher_name = collect_text(school_class.select(&teacher_name_selector).next()).unwrap_or("".to_string());
+                                    println!("{teacher_name}");
 
                                     let topic_date_selector = Selector::parse(".datum").unwrap();
                                     let topic_date = collect_text(school_class.select(&topic_date_selector).next()).unwrap_or("".to_string());
@@ -135,11 +133,12 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                                 date: topic_date.to_owned(),
                                                 title: topic_title.to_owned(),
                                                 details: None,
-                                                homework: homework.to_owned(),
+                                                homework: homework.clone(),
                                                 attachments: None,
                                                 attachment_number: file_count,
                                                 uploads: None,
-                                            })
+                                            });
+                                            lesson.teacher_short = Some(teacher_short.to_owned());
                                         }
                                     }
 
