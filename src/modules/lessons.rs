@@ -1,7 +1,7 @@
-use std::time::SystemTime;
+use crate::utils::constants::URL;
 use reqwest::Client;
 use scraper::{ElementRef, Html, Selector};
-use crate::utils::constants::URL;
+use std::time::SystemTime;
 
 #[derive(Debug)]
 pub struct Lessons {
@@ -16,7 +16,7 @@ pub struct Lesson {
     pub teacher: String,
     pub teacher_short: Option<String>,
     pub entry_latest: Option<LessonEntry>,
-    pub entries: Option<Vec<LessonEntry>>
+    pub entries: Option<Vec<LessonEntry>>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ pub struct LessonEntry {
     pub homework: Option<Homework>,
     pub attachments: Option<Vec<Attachment>>,
     pub attachment_number: i32,
-    pub uploads: Option<LessonUpload>
+    pub uploads: Option<LessonUpload>,
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +71,8 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                     let id = url.split("id=").nth(1).unwrap().to_string();
                                     let name = lesson.select(&h2_selector).next().unwrap().text().collect::<String>().trim().to_string();
                                     let teacher: String = lesson.select(&button_selector).next().and_then(|btn| btn.value().attr("title")).map(|s| s.to_string()).unwrap();
-                                    lessons.lessons.push(Lesson{
+                                    let teacher: String = teacher.split(" (").next().unwrap().to_string();
+                                    lessons.lessons.push(Lesson {
                                         id,
                                         url,
                                         name,
@@ -87,61 +88,54 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                             let school_classes_selector = Selector::parse("tr.printable").unwrap();
                             let school_classes = document.select(&school_classes_selector);
                             for school_class in school_classes {
-                                let teacher_selector = Selector::parse(".teacher").unwrap();
-
-                                if let Some(date) = school_class.select(&Selector::parse(".datum").unwrap()).next() {
-                                    fn collect_text(element_ref: Option<ElementRef>) -> Result<String, ()> {
-                                        match element_ref {
-                                            Some(element_ref) => {
-                                                let s = element_ref.text().collect::<String>().trim().to_string();
-                                                Ok(s)
-                                            }
-                                            None => Err(())
+                                fn collect_text(element_ref: Option<ElementRef>) -> Result<String, ()> {
+                                    match element_ref {
+                                        Some(element_ref) => {
+                                            let s = element_ref.text().collect::<String>().trim().to_string();
+                                            Ok(s)
                                         }
+                                        None => Err(())
                                     }
-                                    let topic_title_selector = Selector::parse(".thema").unwrap();
-                                    let topic_title = collect_text(school_class.select(&topic_title_selector).next()).unwrap_or("".to_string());
+                                }
+                                let topic_title_selector = Selector::parse(".thema").unwrap();
+                                let topic_title = collect_text(school_class.select(&topic_title_selector).next()).unwrap_or("".to_string());
 
-                                    let teacher_short_selector =  Selector::parse(".teacher .btn.btn-primary.dropdown-toggle.btn-xs").unwrap();
-                                    let teacher_short = collect_text(school_class.select(&teacher_short_selector).next()).unwrap_or("".to_string());
+                                let teacher_short_selector = Selector::parse(".teacher .btn.btn-primary.dropdown-toggle.btn-xs").unwrap();
+                                let teacher_short = collect_text(school_class.select(&teacher_short_selector).next()).unwrap_or("".to_string());
 
-                                    println!("{teacher_name}");
+                                let topic_date_selector = Selector::parse(".datum").unwrap();
+                                let topic_date = collect_text(school_class.select(&topic_date_selector).next()).unwrap_or("".to_string());
 
-                                    let topic_date_selector = Selector::parse(".datum").unwrap();
-                                    let topic_date = collect_text(school_class.select(&topic_date_selector).next()).unwrap_or("".to_string());
+                                let course_url_selector = Selector::parse("td>h3>a").unwrap();
+                                let course_url = school_class.select(&course_url_selector).next().map(|x| x.value().attr("href").unwrap().to_string().trim().to_string()).unwrap_or("".to_string());
 
-                                    let course_url_selector = Selector::parse("td>h3>a").unwrap();
-                                    let course_url = school_class.select(&course_url_selector).next().map(|x| x.value().attr("href").unwrap().to_string().trim().to_string()).unwrap_or("".to_string());
+                                let file_count_selector = Selector::parse("file").unwrap();
+                                let file_count: i32 = school_class.select(&file_count_selector).count() as i32;
 
-                                    let file_count_selector = Selector::parse("file").unwrap();
-                                    let file_count: i32 = school_class.select(&file_count_selector).count() as i32;
+                                let homework_selector = Selector::parse(".homework").unwrap();
+                                let homework = school_class.select(&homework_selector).next().map(|_| {
+                                    let description_selector = Selector::parse(".realHomework").unwrap();
+                                    let description = school_class.select(&description_selector).next().unwrap().text().collect::<String>().trim().to_string();
+                                    let completed = school_class.select(&Selector::parse(".undone").unwrap()).next().is_none();
+                                    Homework { description, completed }
+                                });
 
-                                    let homework_selector = Selector::parse(".homework").unwrap();
-                                    let homework = school_class.select(&homework_selector).next().map(|_| {
-                                        let description_selector = Selector::parse(".realHomework").unwrap();
-                                        let description = school_class.select(&description_selector).next().unwrap().text().collect::<String>().trim().to_string();
-                                        let completed = school_class.select(&Selector::parse(".undone").unwrap()).next().is_none();
-                                        Homework { description, completed }
-                                    });
+                                let entry_id = school_class.value().attr("data-entry").unwrap_or("").to_string();
 
-                                    let entry_id = school_class.value().attr("data-entry").unwrap_or("").to_string();
-
-                                    for lesson in lessons.lessons.iter_mut() {
-                                        if lesson.url == course_url.to_owned() {
-                                            lesson.entry_latest = Option::from(LessonEntry{
-                                                id: entry_id.to_owned(),
-                                                date: topic_date.to_owned(),
-                                                title: topic_title.to_owned(),
-                                                details: None,
-                                                homework: homework.clone(),
-                                                attachments: None,
-                                                attachment_number: file_count,
-                                                uploads: None,
-                                            });
-                                            lesson.teacher_short = Some(teacher_short.to_owned());
-                                        }
+                                for lesson in lessons.lessons.iter_mut() {
+                                    if lesson.url == course_url.to_owned() {
+                                        lesson.entry_latest = Option::from(LessonEntry {
+                                            id: entry_id.to_owned(),
+                                            date: topic_date.to_owned(),
+                                            title: topic_title.to_owned(),
+                                            details: None,
+                                            homework: homework.clone(),
+                                            attachments: None,
+                                            attachment_number: file_count,
+                                            uploads: None,
+                                        });
+                                        lesson.teacher_short = Some(teacher_short.to_owned());
                                     }
-
                                 }
                             }
                             Ok(lessons)
