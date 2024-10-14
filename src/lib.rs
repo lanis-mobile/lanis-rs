@@ -85,7 +85,7 @@ mod tests {
             },
             type_a: None,
             data: None,
-            key_pair: utils::crypt::generate_key_pair(184).unwrap()
+            key_pair: utils::crypt::generate_key_pair(184).await.unwrap()
         };
 
         if !account.create_session(&client).await.is_ok() {
