@@ -1,5 +1,7 @@
 use crate::base::account::AccountType::{Student, Teacher};
 use crate::utils::constants::URL;
+use crate::utils::crypt::{KeyPair, generate_key_pair};
+
 use reqwest::header::LOCATION;
 use reqwest::{Client, StatusCode};
 use reqwest_cookie_store::CookieStoreMutex;
@@ -21,6 +23,8 @@ pub struct Account {
     pub password: String,
     pub type_a: Option<AccountType>,
     pub data: Option<HashMap<String, String>>,
+    /// You can generate a new KeyPair by using the Ok result of [generate_key_pair()] <br> Make sure to define 184 (bits) as size
+    pub key_pair: KeyPair,
 }
 
 impl Account {
@@ -39,9 +43,7 @@ impl Account {
                             match response.headers().get(LOCATION).unwrap().to_str() {
                                 Ok(location) => {
                                     match client.get(location).send().await {
-                                        Ok(_) => {
-                                            Ok(())
-                                        }
+                                        Ok(_) => Ok(()),
                                         Err(e) => {
                                             Err(format!("Error getting login URL header: {}", e))
                                         }

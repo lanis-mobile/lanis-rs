@@ -1,2 +1,2 @@
 pub(crate) mod constants;
-pub(crate) mod crypt;
+pub mod crypt;

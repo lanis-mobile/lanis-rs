@@ -84,7 +84,8 @@ mod tests {
                 })
             },
             type_a: None,
-            data: None
+            data: None,
+            key_pair: utils::crypt::generate_key_pair(184).unwrap()
         };
 
         if !account.create_session(&client).await.is_ok() {
@@ -101,6 +102,10 @@ mod tests {
         for lesson in lessons.lessons.iter() {
             println!("{:?}", &lesson);
         }
+        print!("\n");
+
+        println!("Private Key:\n{}", account.key_pair.private_key_string);
+        println!("Public Key:\n{}", account.key_pair.public_key_string);
 
         assert_eq!(account.data.is_some(), true);
         assert_eq!(account.type_a.is_some(), true);
