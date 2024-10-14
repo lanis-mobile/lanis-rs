@@ -1,8 +1,8 @@
 use reqwest::Client;
 use reqwest::header::HeaderMap;
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, DecodePublicKey};
-use serde::Deserialize;
+use serde::{Deserialize};
 use crate::utils::constants::URL;
 
 #[derive(Debug, Clone)]
@@ -40,9 +40,52 @@ pub async fn generate_key_pair(key_size: usize) -> Result<KeyPair, String> {
     }
 }
 
-pub(crate) async fn handshake(client: &Client) -> Result<(), String> {
-    
-    Ok(())
+pub(crate) async fn handshake(client: &Client, public_own_key: &String) -> Result<(), String> {
+    let mut rng = rand::thread_rng();
+    let public_key = get_public_key(&client).await?;
+
+    match public_key.encrypt(&mut rng, Pkcs1v15Encrypt, public_own_key.as_bytes()) {
+        Ok(encrypted_key) => {
+
+            let encrypted_key = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, encrypted_key);
+
+            let mut headers = HeaderMap::new();
+            headers.insert("Accept", "*/*".parse().unwrap());
+            headers.insert("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8".parse().unwrap());
+            headers.insert("Sec-Fetch-Dest", "empty".parse().unwrap());
+            headers.insert("Sec-Fetch-Mode", "cors".parse().unwrap());
+            headers.insert("Sec-Fetch-Site", "same-origin".parse().unwrap());
+
+            match client.post(URL::AJAX).headers(headers).query(&[("f", "rsaHandshake"), ("s", "1111")]).form(&[("key", encrypted_key)]).send().await {
+                Ok(response) => {
+                    #[derive(Debug, Deserialize)]
+                    struct ResponseData {
+                        challenge: String,
+                    }
+
+                    match serde_json::from_str::<ResponseData>(response.text().await.unwrap().as_str()) {
+                        Ok(data) => {
+                            match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data.challenge) {
+                                Ok(challenge) => {
+                                    Ok(())
+                                }
+                                Err(e) => {
+                                    Err(format!("Failed to decode challenge with error: '{}'", e))
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            Err(format!("Failed to decode json with error: '{}'", e))
+                        }
+                    }
+                }
+                Err(e) =>  Err(format!("Failed to perform handshake with error: '{}'", e)),
+            }
+        }
+        Err(e) => {
+            Err(format!("Failed to encrypt with error: '{}'\nIs your public key to long? Maybe take a look at the documentation of the key 'key_pair' in struct 'Account'", e))
+        }
+    }
 }
 
 pub(crate) async fn get_public_key(client: &Client) -> Result<RsaPublicKey, String> {
@@ -58,7 +101,6 @@ pub(crate) async fn get_public_key(client: &Client) -> Result<RsaPublicKey, Stri
         Ok(response) => {
 
             #[derive(Debug, Deserialize)]
-            #[serde(rename_all = "lowercase")]
             // From the hearth
             struct FuckYouLanis {
                 publickey: String,

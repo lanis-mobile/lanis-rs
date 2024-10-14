@@ -23,7 +23,7 @@ pub struct Account {
     pub password: String,
     pub type_a: Option<AccountType>,
     pub data: Option<HashMap<String, String>>,
-    /// You can generate a new KeyPair by using the Ok result of [generate_key_pair()] <br> Make sure to define 184 (bits) as size
+    /// You can generate a new KeyPair by using the Ok result of [generate_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
     pub key_pair: KeyPair,
 }
 
