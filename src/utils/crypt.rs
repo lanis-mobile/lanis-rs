@@ -2,7 +2,9 @@ use reqwest::Client;
 use reqwest::header::HeaderMap;
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, DecodePublicKey};
-use serde::{Deserialize};
+use serde::Deserialize;
+use md5::{Digest, Md5};
+use aes_gcm::{Aes256Gcm, Nonce, KeyInit, Key, AesGcm};
 use crate::utils::constants::URL;
 
 #[derive(Debug, Clone)]
@@ -67,6 +69,7 @@ pub(crate) async fn handshake(client: &Client, public_own_key: &String) -> Resul
                         Ok(data) => {
                             match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data.challenge) {
                                 Ok(challenge) => {
+                                    let result = decrypt_with_key(&challenge, public_own_key).await?;
                                     Ok(())
                                 }
                                 Err(e) => {
@@ -117,4 +120,68 @@ pub(crate) async fn get_public_key(client: &Client) -> Result<RsaPublicKey, Stri
             Err(format!("Failed to get public key with error: {}", e))
         }
     }
+}
+
+pub(crate) async fn decrypt_with_key(data: &Vec<u8>, public_key: &String) -> Result<Vec<u8>, String> {
+
+    fn is_salted(encrypted_data: &Vec<u8>) -> bool {
+        match std::str::from_utf8(&encrypted_data[0..8]) {
+            Ok(s) => s == "Salted__",
+            Err(_) => false,
+        }
+    }
+
+    pub fn bytes_to_keys(salt: &[u8], key: &[u8]) -> Vec<u8> {
+        let mut concatenated_hashes = vec![];
+        let mut current_hash = [0; 16];
+        let mut enough_bytes_for_key = false;
+        let mut pre_hash = vec![0; 0];
+
+        loop {
+            if !current_hash.iter().all(|&x| x == 0) {
+                pre_hash.extend_from_slice(key);
+                pre_hash.extend_from_slice(salt);
+            } else {
+                pre_hash.extend_from_slice(key);
+                pre_hash.extend_from_slice(salt);
+            }
+
+            current_hash = [0; 16];
+            let mut md5 = Md5::new();
+            md5::Digest::update(&mut md5, &pre_hash);
+
+            let mut hash_bytes: Vec<u8> = vec![];
+            {
+                let mut md5_clone = md5.clone();
+                md5::Digest::update(&mut md5_clone, &[]);
+                let result = md5_clone.finalize();
+                hash_bytes.extend_from_slice(result.as_ref());
+            }
+
+            concatenated_hashes.extend_from_slice(&hash_bytes);
+
+            if concatenated_hashes.len() >= 48 {
+                enough_bytes_for_key = true;
+                break;
+            }
+        }
+
+        concatenated_hashes
+    }
+
+    if !is_salted(&data) {
+        return Err("Challenge from lanis is not salted!".to_string());
+    }
+
+    let salt = &data[8..16];
+
+    let key = bytes_to_keys(&salt, &public_key.as_bytes());
+
+    let derived_key = &key[0..32]; // No idea what the type is expected
+    let derived_iv = key[32..48].to_vec();
+
+    // let mut cipher = Aes256Gcm::new(&Key::from(derived_key));
+
+    Ok(vec![])
+
 }
