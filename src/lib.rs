@@ -13,7 +13,6 @@ mod tests {
     use crate::base::account::Account;
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::{get_lessons};
-    use crate::utils::crypt::handshake;
     use super::*;
 
     #[test]
@@ -86,7 +85,7 @@ mod tests {
             },
             type_a: None,
             data: None,
-            key_pair: utils::crypt::generate_key_pair(128).await.unwrap()
+            key_pair: utils::crypt::generate_key_pair(128, &client).await.unwrap()
         };
 
         if !account.create_session(&client).await.is_ok() {
@@ -104,8 +103,6 @@ mod tests {
             println!("{:?}", &lesson);
         }
         print!("\n");
-
-        handshake(&client, &account.key_pair.public_key_string).await.unwrap();
 
         println!("Private Key:\n{}", account.key_pair.private_key_string);
         println!("Public Key:\n{}", account.key_pair.public_key_string);
