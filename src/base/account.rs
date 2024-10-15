@@ -4,10 +4,12 @@ use crate::utils::crypt::{KeyPair, generate_key_pair};
 
 use reqwest::header::LOCATION;
 use reqwest::{Client, StatusCode};
-use reqwest_cookie_store::CookieStoreMutex;
+use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use std::string::String;
+use std::sync::Arc;
+use reqwest::redirect::Policy;
 
 #[derive(Debug)]
 pub enum AccountType {
@@ -21,10 +23,12 @@ pub struct Account {
     pub school_id: i32,
     pub username: String,
     pub password: String,
-    pub type_a: Option<AccountType>,
+    pub account_type: Option<AccountType>,
     pub data: Option<HashMap<String, String>>,
     /// You can generate a new KeyPair by using the Ok result of [generate_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
     pub key_pair: KeyPair,
+    pub client: Client,
+    pub cookie_store: Arc<CookieStoreMutex>,
 }
 
 impl Account {
@@ -32,17 +36,17 @@ impl Account {
      *  Takes an account and a 'reqwest' client and generates a new session for lanis <br>
      *  Needs to be run on every new 'reqwest' client
      */
-    pub async fn create_session(&self, client: &Client) -> Result<(), String> {
+    pub async fn create_session(&self) -> Result<(), String> {
         let params = [("user2", self.username.clone()), ("user", format!("{}.{}", self.school_id, self.username.clone())), ("password", self.password.clone())];
-        let response = client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school_id)).form(&params).send();
+        let response = self.client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school_id)).form(&params).send();
         match response.await {
             Ok(response) => {
                 if response.status() == StatusCode::FOUND {
-                    match client.get(URL::CONNECT).send().await {
+                    match self.client.get(URL::CONNECT).send().await {
                         Ok(response) => {
                             match response.headers().get(LOCATION).unwrap().to_str() {
                                 Ok(location) => {
-                                    match client.get(location).send().await {
+                                    match self.client.get(location).send().await {
                                         Ok(_) => Ok(()),
                                         Err(e) => {
                                             Err(format!("Error getting login URL header: {}", e))
@@ -72,9 +76,9 @@ impl Account {
      *  Refreshes the session to prevent getting logged out
      *  <br> Needs to be called periodically e.g. every 10 seconds
      */
-    pub async fn prevent_logout(&self, client: &Client, cookie_store: &CookieStoreMutex) -> Result<(), String> {
+    pub async fn prevent_logout(&self) -> Result<(), String> {
         let sid: String = {
-            let cs = cookie_store.lock().unwrap();
+            let cs = self.cookie_store.lock().unwrap();
             let mut result = "NONE".to_string();
             for cookie in cs.iter_any() {
                 if cookie.name() == "sid" {
@@ -84,7 +88,7 @@ impl Account {
             result
         };
         let param = [("name", sid)];
-        match client.get(URL::LOGIN_AJAX).form(&param).send().await {
+        match self.client.get(URL::LOGIN_AJAX).form(&param).send().await {
             Ok(_) => {
                 Ok(())
             }
@@ -94,8 +98,8 @@ impl Account {
         }
     }
 
-    pub async fn fetch_account_data(&self, client: &Client) -> Result<HashMap<String, String>, String> {
-        match client.get(URL::USER_DATA).query(&[("a", "userData")]).send().await {
+    pub async fn fetch_account_data(&self) -> Result<HashMap<String, String>, String> {
+        match self.client.get(URL::USER_DATA).query(&[("a", "userData")]).send().await {
             Ok(response) => {
                 let document = Html::parse_document(&*response.text().await.unwrap());
                 let user_data_table_body_selector = Selector::parse("div.col-md-12 table.table.table-striped tbody").unwrap();
@@ -138,4 +142,36 @@ impl Account {
             }
         }
     }
+}
+
+/// Creates a new account struct
+pub async fn generate(school_id: i32, username: String, password: String) -> Result<Account, String> {
+    let cookie_store = CookieStore::new(None);
+    let cookie_store = CookieStoreMutex::new(cookie_store);
+    let cookie_store = Arc::new(cookie_store);
+
+    let client = Client::builder()
+        .redirect(Policy::none())
+        .cookie_provider(std::sync::Arc::clone(&cookie_store))
+        .build()
+        .unwrap();
+
+    let key_pair = generate_key_pair(128, &client).await;
+
+    let mut account = Account {
+        school_id,
+        username,
+        password,
+        account_type: None,
+        data: None,
+        key_pair: key_pair?,
+        client,
+        cookie_store,
+    };
+
+    account.create_session().await?;
+    account.data = Some(account.fetch_account_data().await?);
+    account.account_type = Some(account.get_type().await?);
+
+    Ok(account)
 }
