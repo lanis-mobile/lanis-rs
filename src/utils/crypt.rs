@@ -4,8 +4,11 @@ use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, DecodePublicKey};
 use serde::Deserialize;
 use md5::{Digest, Md5};
-use aes_gcm::{Aes256Gcm, Nonce, KeyInit, Key, AesGcm};
+use aes::cipher::{BlockDecryptMut, KeyIvInit};
+use aes::cipher::block_padding::NoPadding;
 use crate::utils::constants::URL;
+
+type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 
 #[derive(Debug, Clone)]
 pub struct KeyPair {
@@ -123,6 +126,8 @@ pub(crate) async fn get_public_key(client: &Client) -> Result<RsaPublicKey, Stri
 }
 
 pub(crate) async fn decrypt_with_key(data: &Vec<u8>, public_key: &String) -> Result<Vec<u8>, String> {
+    println!("Encrypted Data: \t\t\t'{}'", String::from_utf8_lossy(&data));
+
 
     fn is_salted(encrypted_data: &Vec<u8>) -> bool {
         match std::str::from_utf8(&encrypted_data[0..8]) {
@@ -170,17 +175,29 @@ pub(crate) async fn decrypt_with_key(data: &Vec<u8>, public_key: &String) -> Res
     }
 
     if !is_salted(&data) {
-        return Err("Challenge from lanis is not salted!".to_string());
+        return Err("Data is not salted!".to_string());
     }
 
     let salt = &data[8..16];
 
     let key = bytes_to_keys(&salt, &public_key.as_bytes());
 
-    let derived_key = &key[0..32]; // No idea what the type is expected
-    let derived_iv = key[32..48].to_vec();
+    let mut key_nv = [0; 32];
+    let mut iv = [0; 16];
 
-    // let mut cipher = Aes256Gcm::new(&Key::from(derived_key));
+    for i in 0..32 {
+        key_nv[i] = key[i]
+    }
+
+    for i in 0..16 {
+        iv[i] = key[i+32]
+    }
+
+    let decryptor = Aes256CbcDec::new(&key_nv.into(), &iv.into());
+
+    let plaintext = decryptor.decrypt_padded_vec_mut::<NoPadding>(&data[16..]).unwrap();
+
+    println!("Decrypted Data: \t\t\t{}", String::from_utf8_lossy(&plaintext));
 
     Ok(vec![])
 
