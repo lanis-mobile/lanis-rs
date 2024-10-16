@@ -76,7 +76,7 @@ mod tests {
 
         account.prevent_logout().await.unwrap();
 
-        let lessons = get_lessons(&account.client).await.unwrap();
+        let lessons = get_lessons(&account).await.unwrap();
 
         for lesson in lessons.lessons.iter() {
             println!("{:?}", &lesson);

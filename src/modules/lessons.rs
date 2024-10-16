@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap};
 use crate::utils::constants::URL;
-use reqwest::Client;
 use scraper::{ElementRef, Html, Selector};
 use std::time::SystemTime;
+use crate::base::account::Account;
+use crate::utils::crypt::{decrypt_encoded_tags};
 
 #[derive(Debug, Clone)]
 pub struct Lessons {
@@ -16,7 +17,7 @@ pub struct Lesson {
     pub name: String,
     pub teacher: String,
     pub teacher_short: Option<String>,
-    pub attendances: Option<HashMap<String, String>>,
+    pub attendances: Option<BTreeMap<String, String>>,
     pub entry_latest: Option<LessonEntry>,
     pub entries: Option<Vec<LessonEntry>>,
 }
@@ -51,12 +52,14 @@ pub struct LessonUpload {
     pub url: String,
 }
 
-pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
+pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
+    let client = &account.client;
     let unix_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis();
     match client.get(URL::BASE.to_owned() + &format!("meinunterricht.php?cacheBreaker={}", unix_time)).send().await {
         Ok(response) => {
             match response.text().await {
                 Ok(response) => {
+                    let response = decrypt_encoded_tags(&response, &account.key_pair.public_key_string).await?;
                     let document = Html::parse_document(&response);
                     let lesson_folders_selector = Selector::parse("#mappen").unwrap();
                     let row_selector = Selector::parse(".row").unwrap();
@@ -80,7 +83,7 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                         name,
                                         teacher,
                                         teacher_short: None,
-                                        attendances: Some(HashMap::new()),
+                                        attendances: Some(BTreeMap::new()),
                                         entry_latest: None,
                                         entries: None,
                                     })
@@ -145,7 +148,6 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                             let attendance_selector = Selector::parse("#anwesend").unwrap();
                             let thead_selector = Selector::parse("thead > tr").unwrap();
                             let tbody_selector = Selector::parse("tbody > tr").unwrap();
-                            // let hidden_div_selector = Selector::parse("div.hidden.hidden_encoded").unwrap();
                             let link_selector = Selector::parse("a").unwrap();
 
                             let attendance_element = document.select(&attendance_selector).next().unwrap();
@@ -155,7 +157,7 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
 
                             for row in attendance_element.select(&tbody_selector) {
                                 let mut text_elements: Vec<String> = vec![];
-                                let mut attendances: HashMap<String, String> = HashMap::new();
+                                let mut attendances: BTreeMap<String, String> = BTreeMap::new();
 
 
                                 for element in row.child_elements() {
@@ -174,6 +176,8 @@ pub async fn get_lessons(client: &Client) -> Result<Lessons, String> {
                                     if ["kurs", "lehrkraft"].contains(&key_lower.as_str()) {
                                         continue;
                                     }
+
+                                    let mut value = value.lines().skip(1).next().unwrap_or("").trim().to_string();
 
                                     if value.is_empty() {
                                         value = "0".to_string();

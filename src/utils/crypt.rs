@@ -7,6 +7,7 @@ use md5::{Digest, Md5};
 use aes::cipher::{BlockDecryptMut, KeyIvInit};
 use aes::cipher::block_padding::NoPadding;
 use evpkdf::evpkdf;
+use regex::Regex;
 use crate::utils::constants::URL;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
@@ -142,6 +143,36 @@ async fn get_public_key(client: &Client) -> Result<RsaPublicKey, String> {
         }
         Err(e) => {
             Err(format!("Failed to get public key with error: {}", e))
+        }
+    }
+}
+
+pub (crate) async fn decrypt_encoded_tags(html_string: &str, key: &String) -> Result<String, String> {
+    let exp = Regex::new(r"<encoded>(.*?)</encoded>").unwrap();
+
+    let mut replaced_html = html_string.to_string();
+
+    for caps in exp.captures_iter(html_string) {
+        if let Some(encoded_content) = caps.get(1) {
+            let decrypted_content = decrypt_string_with_key(encoded_content.as_str(), key).await;
+            let decrypted_string = decrypted_content.unwrap_or_default();
+            replaced_html = replaced_html.replacen(&caps[0], &decrypted_string, 1);
+        }
+    }
+
+    Ok(replaced_html.to_string())
+}
+
+pub(crate) async fn decrypt_string_with_key(data: &str, public_key: &String) -> Result<String, String> {
+    match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data) {
+        Ok(data) => {
+            let result = decrypt_with_key(&data, &public_key).await?;
+            let result_string = String::from_utf8_lossy(&result);
+            let result_string = result_string.trim();
+            Ok(result_string.to_string())
+        }
+        Err(e) => {
+            Err(format!("Failed to decode base64 string with error: '{}'", e))
         }
     }
 }
