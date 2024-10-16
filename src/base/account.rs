@@ -6,7 +6,7 @@ use reqwest::header::LOCATION;
 use reqwest::{Client, StatusCode};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use scraper::{Html, Selector};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::string::String;
 use std::sync::Arc;
 use reqwest::redirect::Policy;
@@ -24,7 +24,7 @@ pub struct Account {
     pub username: String,
     pub password: String,
     pub account_type: Option<AccountType>,
-    pub data: Option<HashMap<String, String>>,
+    pub data: Option<BTreeMap<String, String>>,
     /// You can generate a new KeyPair by using the Ok result of [generate_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
     pub key_pair: KeyPair,
     pub client: Client,
@@ -98,7 +98,7 @@ impl Account {
         }
     }
 
-    pub async fn fetch_account_data(&self) -> Result<HashMap<String, String>, String> {
+    pub async fn fetch_account_data(&self) -> Result<BTreeMap<String, String>, String> {
         match self.client.get(URL::USER_DATA).query(&[("a", "userData")]).send().await {
             Ok(response) => {
                 let document = Html::parse_document(&*response.text().await.unwrap());
@@ -107,7 +107,7 @@ impl Account {
                 let row_selector = Selector::parse("tr").unwrap();
                 let key_selector = Selector::parse("td").unwrap();
 
-                let mut result = HashMap::new();
+                let mut result = BTreeMap::new();
 
                 if let Some(user_data_table_body) = document.select(&user_data_table_body_selector).next() {
                     for row in user_data_table_body.select(&row_selector) {

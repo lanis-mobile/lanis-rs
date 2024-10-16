@@ -3,7 +3,7 @@ use reqwest::header::HeaderMap;
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, DecodePublicKey};
 use serde::Deserialize;
-use md5::{Digest, Md5};
+use md5::Md5;
 use aes::cipher::{BlockDecryptMut, KeyIvInit};
 use aes::cipher::block_padding::NoPadding;
 use evpkdf::evpkdf;

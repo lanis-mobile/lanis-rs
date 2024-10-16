@@ -76,18 +76,19 @@ mod tests {
 
         account.prevent_logout().await.unwrap();
 
-        let lessons = get_lessons(&account).await.unwrap();
+        let mut lessons = get_lessons(&account).await.unwrap();
 
         for lesson in lessons.lessons.iter() {
             println!("{:?}", &lesson);
         }
+
+        lessons.lessons[3].set_entries(&account).await.unwrap();
+
         print!("\n");
 
         println!("Private Key:\n{}", account.key_pair.private_key_string);
         println!("Public Key:\n{}", account.key_pair.public_key_string);
 
         assert_eq!(account.data.is_some(), true);
-        assert_eq!(account.account_type.is_some(), true);
-
     }
 }

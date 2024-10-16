@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap};
-use crate::utils::constants::URL;
-use scraper::{ElementRef, Html, Selector};
-use std::time::SystemTime;
 use crate::base::account::Account;
-use crate::utils::crypt::{decrypt_encoded_tags};
+use crate::utils::constants::URL;
+use crate::utils::crypt::decrypt_encoded_tags;
+use scraper::{Element, ElementRef, Html, Selector};
+use std::collections::BTreeMap;
+use std::time::SystemTime;
+use markup5ever::interface::tree_builder::TreeSink;
 
 #[derive(Debug, Clone)]
 pub struct Lessons {
@@ -53,8 +54,96 @@ pub struct LessonUpload {
 }
 
 impl Lesson {
-    pub async fn set_entries(&mut self) -> Result<(), String> {
-        Ok(())
+    pub async fn set_entries(&mut self, account: &Account) -> Result<(), String> {
+        let client = &account.client;
+
+        match client.get(format!("{}{}", URL::BASE, &self.url)).send().await {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    return Err(format!("Failed request with status code: {}", response.status()));
+                }
+
+                let document = decrypt_encoded_tags(response.text().await.unwrap().as_str(), &account.key_pair.public_key_string).await?;
+                let document = Html::parse_document(&document);
+
+                let history: Vec<LessonEntry> = vec![];
+
+                let history_doc_selector = Selector::parse("#history").unwrap();
+                let history_doc = document.select(&history_doc_selector);
+                let history_doc = history_doc.clone().next().unwrap().html();
+                let mut history_doc = Html::parse_document(&history_doc);
+
+                let history_table_rows_selector = Selector::parse("table>tbody>tr").unwrap();
+
+                let hidden_div_selector = Selector::parse(".hidden_encoded").unwrap();
+                let hidden_div_ids: Vec<_> = history_doc.select(&hidden_div_selector).map(|x| x.id()).collect();
+
+                // Remove encoded divs
+                for id in hidden_div_ids {
+                    history_doc.remove_from_parent(&id);
+                }
+
+                let history_table_rows = history_doc.select(&history_table_rows_selector);
+
+                let details_selector = Selector::parse("span.markup i.fa-comment-alt").unwrap();
+                let homework_selector = Selector::parse("span.homework + br + span.markup").unwrap();
+                let homework_done_selector = Selector::parse("span.done.hidden").unwrap();
+                let file_alert_selector = Selector::parse("div.alert.alert-info>a").unwrap();
+                let files_selector = Selector::parse(".files").unwrap();
+
+                for row in history_table_rows {
+                    let details = {
+                        let details = row.select(&details_selector).next();
+                        if details.is_some() {
+                            let details = details.unwrap();
+                            let details = details.parent_element().unwrap().text().next().unwrap().trim().to_string();
+                            Some(details)
+                        } else {
+                            None
+                        }
+                    };
+
+                    let homework_element = row.select(&homework_selector).next();
+                    let mut homework: String = String::new();
+
+                    if homework_element.is_some() {
+                        for text in homework_element.unwrap().text() {
+                            homework += &*format!("{}\n", text.trim()).to_string();
+                        }
+                        homework = homework.rsplit_once('\n').unwrap().0.trim().to_string();
+                    }
+
+                    let homework_done = {
+                        let element = row.select(&homework_done_selector).next();
+                        !element.is_some()
+                    };
+
+                    let files: Option<Vec<Attachment>> = {
+                        if row.child_elements().nth(1).unwrap().select(&file_alert_selector).next().is_some() {
+                            let mut attachments = vec![];
+                            let url = format!("{}{}", URL::BASE, row.child_elements().nth(1).unwrap().select(&file_alert_selector).next().unwrap().value().attr("href").unwrap());
+                            let url = url.replace("&b=zip", "").to_string();
+
+                            for element in row.select(&files_selector).nth(0).unwrap().child_elements() {
+                                let name = element.attr("data-file").unwrap().to_string();
+                                let url = format!("{}&f={}", url, name);
+                                attachments.push(Attachment{
+                                    name,
+                                    url,
+                                });
+                            }
+                            Some(attachments)
+                        } else {
+                            None
+                        }
+                    };
+                }
+                Ok(())
+            }
+            Err(error) => {
+                Err(format!("Failed to get '{}{}' with error: {}", URL::BASE, &self.url, error))
+            }
+        }
     }
 }
 
