@@ -17,7 +17,7 @@ pub struct Lesson {
     pub name: String,
     pub teacher: String,
     pub teacher_short: Option<String>,
-    pub attendances: Option<BTreeMap<String, String>>,
+    pub attendances: BTreeMap<String, String>,
     pub entry_latest: Option<LessonEntry>,
     pub entries: Option<Vec<LessonEntry>>,
 }
@@ -52,6 +52,12 @@ pub struct LessonUpload {
     pub url: String,
 }
 
+impl Lesson {
+    pub async fn set_entries(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
     let client = &account.client;
     let unix_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis();
@@ -83,7 +89,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                         name,
                                         teacher,
                                         teacher_short: None,
-                                        attendances: Some(BTreeMap::new()),
+                                        attendances: BTreeMap::new(),
                                         entry_latest: None,
                                         entries: None,
                                     })
@@ -115,7 +121,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                 let course_url_selector = Selector::parse("td>h3>a").unwrap();
                                 let course_url = school_class.select(&course_url_selector).next().map(|x| x.value().attr("href").unwrap().to_string().trim().to_string()).unwrap_or("".to_string());
 
-                                let file_count_selector = Selector::parse("file").unwrap();
+                                let file_count_selector = Selector::parse(".file").unwrap();
                                 let file_count: i32 = school_class.select(&file_count_selector).count() as i32;
 
                                 let homework_selector = Selector::parse(".homework").unwrap();
@@ -190,7 +196,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                     let course_url = hyperlink.value().attr("href").unwrap_or("");
                                     for lesson in &mut lessons.lessons {
                                         if course_url.contains(&lesson.id) {
-                                            lesson.attendances = Some(attendances);
+                                            lesson.attendances = attendances;
                                             break;
                                         }
                                     }
