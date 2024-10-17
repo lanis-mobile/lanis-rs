@@ -32,7 +32,7 @@ pub struct LessonEntry {
     pub homework: Option<Homework>,
     pub attachments: Option<Vec<Attachment>>,
     pub attachment_number: i32,
-    pub uploads: Option<LessonUpload>,
+    pub uploads: Option<Vec<LessonUpload>>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +50,12 @@ pub struct Homework {
 
 #[derive(Debug, Clone)]
 pub struct LessonUpload {
+    pub name: String,
+    /// True if open and false if closed
+    pub state: bool,
     pub url: String,
+    pub uploaded: String,
+    pub date: Option<String>,
 }
 
 impl Lesson {
@@ -85,11 +90,21 @@ impl Lesson {
 
                 let history_table_rows = history_doc.select(&history_table_rows_selector);
 
+                // Selectors for loop
                 let details_selector = Selector::parse("span.markup i.fa-comment-alt").unwrap();
+
                 let homework_selector = Selector::parse("span.homework + br + span.markup").unwrap();
                 let homework_done_selector = Selector::parse("span.done.hidden").unwrap();
+
                 let file_alert_selector = Selector::parse("div.alert.alert-info>a").unwrap();
                 let files_selector = Selector::parse(".files").unwrap();
+
+                let upload_group_selector = Selector::parse("div.btn-group").unwrap();
+                let open_upload_selector = Selector::parse(".btn-warning").unwrap();
+                let closed_upload_selector = Selector::parse(".btn-default").unwrap();
+                let upload_url_selector = Selector::parse("ul.dropdown-menu li a").unwrap();
+                let upload_badge_selector = Selector::parse("span.badge").unwrap();
+                let upload_small_selector = Selector::parse("small").unwrap();
 
                 for row in history_table_rows {
                     let details = {
@@ -118,7 +133,7 @@ impl Lesson {
                         !element.is_some()
                     };
 
-                    let files: Option<Vec<Attachment>> = {
+                    let attachments: Option<Vec<Attachment>> = {
                         if row.child_elements().nth(1).unwrap().select(&file_alert_selector).next().is_some() {
                             let mut attachments = vec![];
                             let url = format!("{}{}", URL::BASE, row.child_elements().nth(1).unwrap().select(&file_alert_selector).next().unwrap().value().attr("href").unwrap());
@@ -135,6 +150,63 @@ impl Lesson {
                             Some(attachments)
                         } else {
                             None
+                        }
+                    };
+
+                    let uploads: Option<Vec<LessonUpload>> = {
+                        let upload_groups = row.child_elements().nth(1).unwrap().select(&upload_group_selector);
+                        let mut uploads: Vec<LessonUpload> = vec![];
+
+                        for group in upload_groups {
+                            let open = group.select(&open_upload_selector).next();
+                            let closed = group.select(&closed_upload_selector).next();
+
+                            if open.is_some() {
+                                let open = open.unwrap();
+
+                                let name = open.children().nth(2).unwrap().value().as_text().unwrap().to_string();
+                                let state = true;
+                                let url = format!("{}{}", URL::BASE, group.select(&upload_url_selector).next().unwrap().value().attr("href").unwrap());
+                                let uploaded = open.select(&upload_badge_selector).next().unwrap().text().collect::<String>().trim().to_string();
+                                let date = {
+                                    let text = open.select(&upload_small_selector).next().unwrap().text().collect::<String>().trim().to_string();
+                                    let text = text.replace("\n", "").trim().to_string();
+                                    let text = text.replace("                                                                ", "").trim().to_string();
+                                    let text = text.replace("bis ", "").trim().to_string();
+                                    let text = text.replace("um", "").trim().to_string();
+
+                                    text
+                                };
+
+                                uploads.push(LessonUpload{
+                                    name,
+                                    state,
+                                    url,
+                                    uploaded,
+                                    date: Some(date),
+                                });
+                            } else if closed.is_some() {
+                                let closed = closed.unwrap();
+
+                                let name = closed.children().nth(2).unwrap().value().as_text().unwrap().trim().to_string();
+                                let state = false;
+                                let url = format!("{}{}", URL::BASE, group.select(&upload_url_selector).next().unwrap().value().attr("href").unwrap());
+                                let uploaded = closed.select(&upload_badge_selector).next().unwrap().text().collect::<String>().trim().to_string();
+
+                                uploads.push(LessonUpload{
+                                    name,
+                                    state,
+                                    url,
+                                    uploaded,
+                                    date: None,
+                                })
+                            }
+                        }
+
+                        if uploads.is_empty() {
+                            None
+                        } else {
+                            Some(uploads)
                         }
                     };
                 }
