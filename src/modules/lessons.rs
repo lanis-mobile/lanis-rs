@@ -13,7 +13,7 @@ pub struct Lessons {
 
 #[derive(Debug, Clone)]
 pub struct Lesson {
-    pub id: String,
+    pub id: i32,
     pub url: String,
     pub name: String,
     pub teacher: String,
@@ -25,8 +25,9 @@ pub struct Lesson {
 
 #[derive(Debug, Clone)]
 pub struct LessonEntry {
-    pub id: String,
+    pub id: i32,
     pub date: String,
+    pub school_hours: Vec<i32>,
     pub title: String,
     pub details: Option<String>,
     pub homework: Option<Homework>,
@@ -54,7 +55,7 @@ pub struct LessonUpload {
     /// True if open and false if closed
     pub state: bool,
     pub url: String,
-    pub uploaded: String,
+    pub uploaded: Option<String>,
     pub date: Option<String>,
 }
 
@@ -71,7 +72,7 @@ impl Lesson {
                 let document = decrypt_encoded_tags(response.text().await.unwrap().as_str(), &account.key_pair.public_key_string).await?;
                 let document = Html::parse_document(&document);
 
-                let history: Vec<LessonEntry> = vec![];
+                let mut history: Vec<LessonEntry> = vec![];
 
                 let history_doc_selector = Selector::parse("#history").unwrap();
                 let history_doc = document.select(&history_doc_selector);
@@ -91,6 +92,8 @@ impl Lesson {
                 let history_table_rows = history_doc.select(&history_table_rows_selector);
 
                 // Selectors for loop
+                let title_selector = Selector::parse("big>b").unwrap();
+
                 let details_selector = Selector::parse("span.markup i.fa-comment-alt").unwrap();
 
                 let homework_selector = Selector::parse("span.homework + br + span.markup").unwrap();
@@ -107,6 +110,12 @@ impl Lesson {
                 let upload_small_selector = Selector::parse("small").unwrap();
 
                 for row in history_table_rows {
+                    let id = row.attr("data-entry").unwrap().parse::<i32>().unwrap();
+
+                    let title = {
+                        row.child_elements().nth(1).unwrap().select(&title_selector).next().unwrap().text().next().unwrap().trim().to_string()
+                    };
+
                     let details = {
                         let details = row.select(&details_selector).next();
                         if details.is_some() {
@@ -118,19 +127,30 @@ impl Lesson {
                         }
                     };
 
-                    let homework_element = row.select(&homework_selector).next();
-                    let mut homework: String = String::new();
+                    let homework = {
+                        let homework_element = row.select(&homework_selector).next();
+                        let mut description: String = String::new();
 
-                    if homework_element.is_some() {
-                        for text in homework_element.unwrap().text() {
-                            homework += &*format!("{}\n", text.trim()).to_string();
+                        if homework_element.is_some() {
+                            for text in homework_element.unwrap().text() {
+                                description += &*format!("{}\n", text.trim()).to_string();
+                            }
+                            description = description.rsplit_once('\n').unwrap().0.trim().to_string();
                         }
-                        homework = homework.rsplit_once('\n').unwrap().0.trim().to_string();
-                    }
 
-                    let homework_done = {
-                        let element = row.select(&homework_done_selector).next();
-                        !element.is_some()
+                        let completed = {
+                            let element = row.select(&homework_done_selector).next();
+                            !element.is_some()
+                        };
+
+                        if description.is_empty() {
+                            None
+                        } else {
+                            Some(Homework{
+                                description,
+                                completed,
+                            })
+                        }
                     };
 
                     let attachments: Option<Vec<Attachment>> = {
@@ -167,7 +187,12 @@ impl Lesson {
                                 let name = open.children().nth(2).unwrap().value().as_text().unwrap().to_string();
                                 let state = true;
                                 let url = format!("{}{}", URL::BASE, group.select(&upload_url_selector).next().unwrap().value().attr("href").unwrap());
-                                let uploaded = open.select(&upload_badge_selector).next().unwrap().text().collect::<String>().trim().to_string();
+                                let uploaded = {
+                                    match open.select(&upload_badge_selector).next() {
+                                        Some(element) => Some(element.text().collect::<String>().trim().to_string()),
+                                        None => None,
+                                    }
+                                };
                                 let date = {
                                     let text = open.select(&upload_small_selector).next().unwrap().text().collect::<String>().trim().to_string();
                                     let text = text.replace("\n", "").trim().to_string();
@@ -182,7 +207,13 @@ impl Lesson {
                                     name,
                                     state,
                                     url,
-                                    uploaded,
+                                    uploaded: {
+                                        if uploaded.is_some() {
+                                            Some(uploaded.unwrap())
+                                        } else {
+                                            None
+                                        }
+                                    },
                                     date: Some(date),
                                 });
                             } else if closed.is_some() {
@@ -191,13 +222,24 @@ impl Lesson {
                                 let name = closed.children().nth(2).unwrap().value().as_text().unwrap().trim().to_string();
                                 let state = false;
                                 let url = format!("{}{}", URL::BASE, group.select(&upload_url_selector).next().unwrap().value().attr("href").unwrap());
-                                let uploaded = closed.select(&upload_badge_selector).next().unwrap().text().collect::<String>().trim().to_string();
+                                let uploaded = {
+                                    match closed.select(&upload_badge_selector).next() {
+                                        Some(element) => Some(element.text().collect::<String>().trim().to_string()),
+                                        None => None,
+                                    }
+                                };
 
                                 uploads.push(LessonUpload{
                                     name,
                                     state,
                                     url,
-                                    uploaded,
+                                    uploaded: {
+                                        if uploaded.is_some() {
+                                            Some(uploaded.unwrap())
+                                        } else {
+                                            None
+                                        }
+                                    },
                                     date: None,
                                 })
                             }
@@ -209,6 +251,64 @@ impl Lesson {
                             Some(uploads)
                         }
                     };
+
+                    let date = row.child_elements().nth(0).unwrap().text().collect::<String>().split("\n").nth(0).unwrap().trim().to_string();
+                    let school_hours = {
+                        let mut school_hours = vec![];
+
+                        let string = row.child_elements().nth(0).unwrap().text().collect::<String>().split("\n").nth(2).unwrap().trim()
+                            .replace(". ", "")
+                            .replace("Stunde", "")
+                            .replace("-", "")
+                            .trim()
+                            .to_string();
+
+                        for hour in string.split(' ') {
+                            school_hours.push(hour.parse::<i32>().unwrap_or_default())
+                        }
+
+                        school_hours
+                    };
+
+                    history.push(LessonEntry{
+                        id,
+                        date,
+                        school_hours,
+                        title,
+                        details,
+                        homework: {
+                            if homework.is_some() {
+                                Some(homework.unwrap())
+                            } else {
+                                None
+                            }
+                        },
+                        attachments: {
+                            if attachments.is_some() {
+                                Some(attachments.clone().unwrap())
+                            } else {
+                                None
+                            }
+                        },
+                        attachment_number: {
+                            if attachments.is_some() {
+                                attachments.unwrap().len() as i32
+                            } else {
+                                0
+                            }
+                        },
+                        uploads: {
+                            if uploads.is_some() {
+                                Some(uploads.unwrap())
+                            } else {
+                                None
+                            }
+                        }
+                    })
+                }
+
+                if !history.is_empty() {
+                    self.entries = Some(history);
                 }
                 Ok(())
             }
@@ -240,7 +340,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                             for lesson in row.child_elements() {
                                 if let Some(url_element) = lesson.select(&link_selector).next() {
                                     let url = url_element.value().attr("href").unwrap().to_string();
-                                    let id = url.split("id=").nth(1).unwrap().to_string();
+                                    let id = url.split("id=").nth(1).unwrap().to_string().parse::<i32>().unwrap();
                                     let name = lesson.select(&h2_selector).next().unwrap().text().collect::<String>().trim().to_string();
                                     let teacher: String = lesson.select(&button_selector).next().and_then(|btn| btn.value().attr("title")).map(|s| s.to_string()).unwrap();
                                     let teacher: String = teacher.split(" (").next().unwrap().to_string();
@@ -298,8 +398,9 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                 for lesson in lessons.lessons.iter_mut() {
                                     if lesson.url == course_url.to_owned() {
                                         lesson.entry_latest = Option::from(LessonEntry {
-                                            id: entry_id.to_owned(),
+                                            id: entry_id.to_owned().parse().unwrap(),
                                             date: topic_date.to_owned(),
+                                            school_hours: vec![-1],
                                             title: topic_title.to_owned(),
                                             details: None,
                                             homework: homework.clone(),
@@ -356,7 +457,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                 if let Some(hyperlink) = row.select(&link_selector).next() {
                                     let course_url = hyperlink.value().attr("href").unwrap_or("");
                                     for lesson in &mut lessons.lessons {
-                                        if course_url.contains(&lesson.id) {
+                                        if course_url.contains(&lesson.id.to_string()) {
                                             lesson.attendances = attendances;
                                             break;
                                         }

@@ -78,11 +78,23 @@ mod tests {
 
         let mut lessons = get_lessons(&account).await.unwrap();
 
-        for lesson in lessons.lessons.iter() {
-            println!("{:?}", &lesson);
+        lessons.lessons[3].set_entries(&account).await.unwrap();
+
+        for mut lesson in lessons.lessons.iter_mut() {
+            println!("\tid: {}", lesson.id);
+            println!("\turl: {}", lesson.url);
+            println!("\tname: {}", lesson.name);
+            println!("\tteacher: {}", lesson.teacher);
+            println!("\tteacher_short: {:?}", lesson.teacher_short);
+            println!("\tattendances: {:?}", lesson.attendances);
+            println!("\tentry_latest: {:?}", lesson.entry_latest);
+            println!("\tentries:");
+            lesson.set_entries(&account).await.unwrap();
+            for entry in lesson.entries.clone().unwrap() {
+                println!("\t\t{:?}", entry)
+            }
         }
 
-        lessons.lessons[3].set_entries(&account).await.unwrap();
 
         print!("\n");
 
