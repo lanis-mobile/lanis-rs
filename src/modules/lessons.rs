@@ -439,7 +439,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
 
                                 for (i, key) in keys.iter().enumerate() {
                                     let key_lower = key.to_lowercase();
-                                    let mut value = text_elements.get(i).unwrap_or(&"".to_string()).clone();
+                                    let value = text_elements.get(i).unwrap_or(&"".to_string()).clone();
 
                                     if ["kurs", "lehrkraft"].contains(&key_lower.as_str()) {
                                         continue;
