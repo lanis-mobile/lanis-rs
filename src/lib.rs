@@ -13,6 +13,7 @@ mod tests {
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::{get_lessons};
     use super::*;
+    use stopwatch::Stopwatch;
 
     #[test]
     fn it_works() {
@@ -53,6 +54,7 @@ mod tests {
     // This test everything that's bound to student accounts
     #[tokio::test]
     async fn test_student_account() {
+        let stopwatch = Stopwatch::start_new();
         let mut account = account::generate(
             {
                 env::var("LANIS_SCHOOL_ID").unwrap_or_else(|e| {
@@ -73,13 +75,18 @@ mod tests {
                 })
             },
         ).await.unwrap();
+        println!("account::generate() took {}ms", stopwatch.elapsed_ms());
 
+        let stopwatch = Stopwatch::start_new();
         account.prevent_logout().await.unwrap();
+        println!("account.prevent_logout() took {}ms", stopwatch.elapsed_ms());
 
+        let stopwatch = Stopwatch::start_new();
         let mut lessons = get_lessons(&account).await.unwrap();
+        println!("get_lessons() took {}ms", stopwatch.elapsed_ms());
 
-        lessons.lessons[3].set_entries(&account).await.unwrap();
 
+        let stopwatch = Stopwatch::start_new();
         for mut lesson in lessons.lessons.iter_mut() {
             println!("\tid: {}", lesson.id);
             println!("\turl: {}", lesson.url);
@@ -88,12 +95,15 @@ mod tests {
             println!("\tteacher_short: {:?}", lesson.teacher_short);
             println!("\tattendances: {:?}", lesson.attendances);
             println!("\tentry_latest: {:?}", lesson.entry_latest);
-            println!("\tentries:");
+            let stopwatch = Stopwatch::start_new();
             lesson.set_entries(&account).await.unwrap();
+            println!("\tentries:");
+            println!("\tlesson.set_entries() took {}ms", stopwatch.elapsed_ms());
             for entry in lesson.entries.clone().unwrap() {
                 println!("\t\t{:?}", entry)
             }
         }
+        println!("Iteration of all lessons took {}ms", stopwatch.elapsed_ms());
 
 
         print!("\n");
