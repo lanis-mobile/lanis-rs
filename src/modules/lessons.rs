@@ -59,8 +59,20 @@ pub struct LessonUpload {
     pub date: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct LessonMark {
+    name: String,
+    date: String,
+    mark: String,
+    comment: Option<String>,
+}
+
 impl Lesson {
-    pub async fn set_entries(&mut self, account: &Account) -> Result<(), String> {
+    /**
+     *  Sets the data for a lesson. This data includes: <br>
+     *  Entries history, marks and class tests
+     */
+    pub async fn set_data(&mut self, account: &Account) -> Result<(), String> {
         let client = &account.client;
 
         match client.get(format!("{}{}", URL::BASE, &self.url)).send().await {
@@ -306,10 +318,46 @@ impl Lesson {
                         }
                     })
                 }
+                self.entries = Some(history);
 
-                if !history.is_empty() {
-                    self.entries = Some(history);
+
+                // Marks are currently untested
+                let marks_section_selector = Selector::parse("#marks").unwrap();
+                let mut marks_doc = Html::parse_document(&document.select(&marks_section_selector).nth(0).unwrap().html());
+
+                let encoded_elements: Vec<_> = marks_doc.select(&hidden_div_selector).map(|x| x.id()).collect();
+                for id in encoded_elements {
+                    marks_doc.remove_from_parent(&id)
                 }
+
+                let marks_table_rows_selector = Selector::parse("table>tbody>tr").unwrap();
+                let marks_table_rows = marks_doc.select(&marks_table_rows_selector);
+
+                let mut marks = vec![];
+
+                for row in marks_table_rows {
+
+                    if row.child_elements().count() == 3 {
+                        let name = row.child_elements().nth(0).unwrap().text().collect::<String>().trim().to_string();
+                        let date = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().to_string();
+                        let mark = row.child_elements().nth(2).unwrap().text().collect::<String>().trim().to_string();
+                        let comment = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().split(":").nth(1).unwrap().trim().to_string();
+                        marks.push(LessonMark{
+                            name,
+                            date,
+                            mark,
+                            comment: {
+                                if comment.is_empty() {
+                                    None
+                                } else {
+                                    Some(comment)
+                                }
+                            }
+                        });
+                    }
+                }
+
+
                 Ok(())
             }
             Err(error) => {

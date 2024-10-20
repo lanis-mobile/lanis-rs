@@ -96,7 +96,7 @@ mod tests {
             println!("\tattendances: {:?}", lesson.attendances);
             println!("\tentry_latest: {:?}", lesson.entry_latest);
             let mut stopwatch = StopWatch::start();
-            lesson.set_entries(&account).await.unwrap();
+            lesson.set_data(&account).await.unwrap();
             println!("\tlesson.set_entries() took {}ms", stopwatch.split().split.as_millis());
             println!("\tentries:");
             for entry in lesson.entries.clone().unwrap() {
