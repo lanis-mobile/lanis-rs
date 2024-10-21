@@ -102,6 +102,10 @@ mod tests {
             for entry in lesson.entries.clone().unwrap() {
                 println!("\t\t{:?}", entry)
             }
+            println!("\texams:");
+            for exam in lesson.exams.clone().unwrap() {
+                println!("\t\t{:?}", exam)
+            }
         }
         println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
 

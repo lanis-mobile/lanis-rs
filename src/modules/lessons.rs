@@ -5,6 +5,7 @@ use scraper::{Element, ElementRef, Html, Selector};
 use std::collections::BTreeMap;
 use std::time::SystemTime;
 use markup5ever::interface::tree_builder::TreeSink;
+use regex::Regex;
 
 #[derive(Debug, Clone)]
 pub struct Lessons {
@@ -17,10 +18,17 @@ pub struct Lesson {
     pub url: String,
     pub name: String,
     pub teacher: String,
+    /// Should always be Some , if not something went wrong
     pub teacher_short: Option<String>,
     pub attendances: BTreeMap<String, String>,
+    /// If this is None there is no latest entry
     pub entry_latest: Option<LessonEntry>,
+    /// Will be Some(empty) if no exams are found and None if this value wasn't initialized
     pub entries: Option<Vec<LessonEntry>>,
+    /// Will be empty if no exams are found and None if this value wasn't initialized
+    pub marks: Option<Vec<LessonMark>>,
+    /// Will be empty if no exams are found and None if this value wasn't initialized
+    pub exams: Option<Vec<LessonExam>>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,10 +69,17 @@ pub struct LessonUpload {
 
 #[derive(Debug, Clone)]
 pub struct LessonMark {
-    name: String,
-    date: String,
-    mark: String,
-    comment: Option<String>,
+    pub name: String,
+    pub date: String,
+    pub mark: String,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LessonExam {
+    pub date: String,
+    pub name: String,
+    pub finished: bool,
 }
 
 impl Lesson {
@@ -336,7 +351,6 @@ impl Lesson {
                 let mut marks = vec![];
 
                 for row in marks_table_rows {
-
                     if row.child_elements().count() == 3 {
                         let name = row.child_elements().nth(0).unwrap().text().collect::<String>().trim().to_string();
                         let date = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().to_string();
@@ -356,7 +370,67 @@ impl Lesson {
                         });
                     }
                 }
+                self.marks = Some(marks);
 
+                // Exams
+                let exam_section_selector = Selector::parse("#klausuren").unwrap();
+                let exam_section = document.select(&exam_section_selector).nth(0).unwrap();
+                let ul_selector = Selector::parse("ul").unwrap();
+                let li_selector = Selector::parse("li").unwrap();
+                let title_selector = Selector::parse("h2").unwrap();
+
+                let mut exams= vec![];
+
+                if !exam_section.child_elements().nth(0).unwrap().html().contains("Diese Kursmappe beinhaltet leider noch keine Leistungskontrollen!") {
+                    for element in exam_section.child_elements() {
+                        let elements = element.select(&ul_selector);
+                        for element in elements {
+                            let sibling_html = Html::parse_document(&element.prev_sibling_element().unwrap().html());
+                            let title = sibling_html.select(&title_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
+                            let re = Regex::new(r"\s+\n").unwrap();
+
+                            let li_elements = element.select(&li_selector);
+                            for element in li_elements {
+                                let exam = {
+                                    let text = element.text().collect::<String>().trim().to_string();
+                                    let mut result = re.replace_all(text.as_str(), "").trim().to_string();
+                                    let mut trimming = true;
+                                    while trimming {
+                                        let previous = result.clone();
+                                        result = result.replace("  ", " ").trim().to_string();
+                                        if result == previous {
+                                            trimming = false;
+                                        }
+                                    }
+                                    result = result.replace("\n", "").trim().to_string();
+                                    result
+                                };
+                                let split = exam.split(" ");
+                                let date = split.clone().nth(0).unwrap().trim().to_string();
+                                let name = {
+                                    let mut result = "".to_string();
+                                    for i in 1..split.clone().count() {
+                                        result = format!("{} {}", result, split.clone().nth(i).unwrap());
+                                    }
+                                    result.trim().to_string()
+                                };
+
+                                exams.push(LessonExam{
+                                    date,
+                                    name,
+                                    finished: {
+                                        if title == "Alle Leistungskontrolle(n)" {
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+                self.exams = Some(exams);
 
                 Ok(())
             }
@@ -401,6 +475,8 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                         attendances: BTreeMap::new(),
                                         entry_latest: None,
                                         entries: None,
+                                        marks: None,
+                                        exams: None,
                                     })
                                 }
                             }
