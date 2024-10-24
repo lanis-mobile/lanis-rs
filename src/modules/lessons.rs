@@ -7,6 +7,8 @@ use std::time::SystemTime;
 use markup5ever::interface::tree_builder::TreeSink;
 use regex::Regex;
 use reqwest::Client;
+use reqwest::header::HeaderMap;
+use reqwest::multipart::Part;
 
 #[derive(Debug, Clone)]
 pub struct Lessons {
@@ -59,6 +61,7 @@ pub struct Homework {
 
 #[derive(Debug, Clone)]
 pub struct LessonUpload {
+    pub id: i32,
     pub name: String,
     /// True if open and false if closed
     pub state: bool,
@@ -229,8 +232,10 @@ impl Lesson {
 
                                     text
                                 };
+                                let id = url.split("&id=").last().unwrap().parse::<i32>().unwrap();
 
                                 uploads.push(LessonUpload{
+                                    id,
                                     name,
                                     state,
                                     url,
@@ -255,8 +260,10 @@ impl Lesson {
                                         None => None,
                                     }
                                 };
+                                let id = url.split("&id=").last().unwrap().parse::<i32>().unwrap();
 
                                 uploads.push(LessonUpload{
+                                    id,
                                     name,
                                     state,
                                     url,
@@ -335,8 +342,8 @@ impl Lesson {
                 }
                 self.entries = Some(history);
 
-
-                // Marks are currently untested
+                // Marks
+                // TODO: Test parsing of existing marks
                 let marks_section_selector = Selector::parse("#marks").unwrap();
                 let mut marks_doc = Html::parse_document(&document.select(&marks_section_selector).nth(0).unwrap().html());
 
@@ -459,6 +466,66 @@ impl Homework {
                 Err(format!("Failed to set homework with error: {}", e))
             }
         }
+    }
+}
+
+impl LessonUpload {
+    // TODO: Test upload function
+    pub async fn upload(&mut self, files: Vec<String>, course_id: i32, entry_id: i32, client: &Client) -> Result<String, String> {
+        if files.is_empty() {
+            return Err("Please specify a file path to upload!".to_string())
+        }
+
+        let form = reqwest::multipart::Form::new()
+            .part("a", Part::text("sus_abgabe"))
+            .part("b", Part::text(course_id.to_string()))
+            .part("e", Part::text(entry_id.to_string()))
+            .part("id", Part::text(self.id.to_string()))
+            .part("file1", {
+                match files.get(0) {
+                    Some(path) => Part::file(path).await.unwrap(),
+                    None => Part::text("")
+                }
+            })
+            .part("file2", {
+                match files.get(1) {
+                    Some(path) => Part::file(path).await.unwrap(),
+                    None => Part::text("")
+                }
+            })
+            .part("file3", {
+                match files.get(2) {
+                    Some(path) => Part::file(path).await.unwrap(),
+                    None => Part::text("")
+                }
+            })
+            .part("file4", {
+                match files.get(3) {
+                    Some(path) => Part::file(path).await.unwrap(),
+                    None => Part::text("")
+                }
+            })
+            .part("file5", {
+                match files.get(4) {
+                    Some(path) => Part::file(path).await.unwrap(),
+                    None => Part::text("")
+                }
+            });
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Accept", "*/*".parse().unwrap());
+        headers.insert("Content-Type", "multipart/form-data".parse().unwrap());
+
+       match client.post(URL::MEIN_UNTERRICHT).multipart(form).headers(headers).send().await {
+           Ok(response) => {
+               let text = response.text().await.unwrap();
+               println!("Successfully uploaded files! Response: {}", text);
+               Ok(text)
+           }
+           Err(e) => {
+               Err(format!("Failed to upload file with error: '{}'", e))
+           }
+       }
     }
 }
 

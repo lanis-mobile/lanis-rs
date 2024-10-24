@@ -120,6 +120,14 @@ mod tests {
                     entry.homework = Some(homework);
                     println!("\t\t\tHomework after change: {:?}", entry.homework);
                 }
+                if entry.uploads.is_some() {
+                    let mut uploads = entry.uploads.clone().unwrap();
+                    for upload in &mut uploads {
+                        if upload.state {
+                            upload.upload(vec!["/home/rajala1404/.librewolf/installs.ini".to_string()], lesson.id, entry.id, &account.client).await.unwrap();
+                        }
+                    }
+                }
             }
             println!("\tIteration of all entries took {}ms", stopwatch.split().split.as_millis());
             println!("\texams:");
