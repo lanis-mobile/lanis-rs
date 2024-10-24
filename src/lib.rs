@@ -126,6 +126,7 @@ mod tests {
                         if upload.state {
                             let mut stopwatch = StopWatch::start();
                             upload.upload(vec![{ env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e) })}], lesson.id, entry.id, &account.client).await.unwrap();
+                            println!("Uploaded test file to {}", upload.url);
                             println!("upload.upload() took {}ms", stopwatch.split().split.as_millis());
                         }
                     }
