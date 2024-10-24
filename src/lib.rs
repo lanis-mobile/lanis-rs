@@ -124,7 +124,9 @@ mod tests {
                     let mut uploads = entry.uploads.clone().unwrap();
                     for upload in &mut uploads {
                         if upload.state {
+                            let mut stopwatch = StopWatch::start();
                             upload.upload(vec!["/home/rajala1404/.librewolf/installs.ini".to_string()], lesson.id, entry.id, &account.client).await.unwrap();
+                            println!("upload.upload() took {}ms", stopwatch.split().split.as_millis());
                         }
                     }
                 }
