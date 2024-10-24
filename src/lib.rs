@@ -125,7 +125,7 @@ mod tests {
                     for upload in &mut uploads {
                         if upload.state {
                             let mut stopwatch = StopWatch::start();
-                            upload.upload(vec!["/home/rajala1404/.librewolf/installs.ini".to_string()], lesson.id, entry.id, &account.client).await.unwrap();
+                            upload.upload(vec![{ env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e) })}], lesson.id, entry.id, &account.client).await.unwrap();
                             println!("upload.upload() took {}ms", stopwatch.split().split.as_millis());
                         }
                     }
