@@ -99,16 +99,35 @@ mod tests {
             lesson.set_data(&account).await.unwrap();
             println!("\tlesson.set_entries() took {}ms", stopwatch.split().split.as_millis());
             println!("\tentries:");
-            for entry in lesson.entries.clone().unwrap() {
-                println!("\t\t{:?}", entry)
+            let mut stopwatch = StopWatch::start();
+            for mut entry in lesson.entries.clone().unwrap() {
+                println!("\t\t{:?}", entry);
+                if entry.homework.is_some() {
+                    let mut homework = entry.homework.clone().unwrap();
+                    let mut new_homework = !homework.completed;
+
+                    let mut stopwatch = StopWatch::start();
+                    homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
+                    println!("\t\t\tHomework was changed from {} to {} and took {}ms", !homework.completed, new_homework, stopwatch.split().split.as_millis());
+                    entry.homework = Some(homework.to_owned());
+                    println!("\t\t\tHomework after change: {:?}", entry.homework);
+
+                    new_homework = !new_homework;
+
+                    let mut stopwatch = StopWatch::start();
+                    homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
+                    println!("\t\t\tHomework was changed from {} to {} and took {}", !homework.completed, new_homework, stopwatch.split().split.as_millis());
+                    entry.homework = Some(homework);
+                    println!("\t\t\tHomework after change: {:?}", entry.homework);
+                }
             }
+            println!("\tIteration of all entries took {}ms", stopwatch.split().split.as_millis());
             println!("\texams:");
             for exam in lesson.exams.clone().unwrap() {
                 println!("\t\t{:?}", exam)
             }
         }
         println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
-
 
         print!("\n");
 

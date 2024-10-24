@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::time::SystemTime;
 use markup5ever::interface::tree_builder::TreeSink;
 use regex::Regex;
+use reqwest::Client;
 
 #[derive(Debug, Clone)]
 pub struct Lessons {
@@ -54,7 +55,6 @@ pub struct Attachment {
 pub struct Homework {
     pub description: String,
     pub completed: bool,
-
 }
 
 #[derive(Debug, Clone)]
@@ -441,6 +441,27 @@ impl Lesson {
     }
 }
 
+impl Homework {
+    pub async fn set_homework(&mut self, state: bool, course_id: i32, entry_id: i32, client: &Client) -> Result<(), String> {
+        match client.post(URL::MEIN_UNTERRICHT)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .form(&[("a", "sus_homeworkDone"), ("entry", entry_id.to_string().as_str()), ("id", course_id.to_string().as_str()), ("b", { if state { "done" } else { "undone" } })])
+            .send().await {
+            Ok(response) => {
+                let text = response.text().await.unwrap();
+                if text == "1" {
+                    self.completed = state;
+                    Ok(())
+                } else {
+                    Err(format!("Failed to set homework! Got instead of '1' '{}' as response", text))
+                }
+            } Err(e) => {
+                Err(format!("Failed to set homework with error: {}", e))
+            }
+        }
+    }
+}
+
 pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
     let client = &account.client;
     let unix_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis();
@@ -509,6 +530,9 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                 let file_count_selector = Selector::parse(".file").unwrap();
                                 let file_count: i32 = school_class.select(&file_count_selector).count() as i32;
 
+
+                                let entry_id = school_class.value().attr("data-entry").unwrap_or("").parse::<i32>().unwrap();
+
                                 let homework_selector = Selector::parse(".homework").unwrap();
                                 let homework = school_class.select(&homework_selector).next().map(|_| {
                                     let description_selector = Selector::parse(".realHomework").unwrap();
@@ -517,12 +541,10 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
                                     Homework { description, completed }
                                 });
 
-                                let entry_id = school_class.value().attr("data-entry").unwrap_or("").to_string();
-
                                 for lesson in lessons.lessons.iter_mut() {
                                     if lesson.url == course_url.to_owned() {
                                         lesson.entry_latest = Option::from(LessonEntry {
-                                            id: entry_id.to_owned().parse().unwrap(),
+                                            id: entry_id.to_owned(),
                                             date: topic_date.to_owned(),
                                             school_hours: vec![-1],
                                             title: topic_title.to_owned(),

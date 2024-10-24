@@ -12,4 +12,5 @@ impl URL {
     pub const START: &'static str = "https://start.schulportal.hessen.de/startseite.php";
 
     pub const USER_DATA: &'static str = "https://start.schulportal.hessen.de/benutzerverwaltung.php";
+    pub const MEIN_UNTERRICHT: &'static str = "https://start.schulportal.hessen.de/meinunterricht.php";
 }
