@@ -123,9 +123,13 @@ mod tests {
                 if entry.uploads.is_some() {
                     let mut uploads = entry.uploads.clone().unwrap();
                     for upload in &mut uploads {
+                        let mut stopwatch = StopWatch::start();
+                        upload.info = Some(upload.get_info(&account.client).await.unwrap());
+                        println!("\t\t\tupload.get_info() took {}ms", stopwatch.split().split.as_millis());
+                        println!("\t\t\tUpload: {:?}", upload);
                         if upload.state {
                             let mut stopwatch = StopWatch::start();
-                            let status = upload.upload(vec![{ env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e) })}], lesson.id, entry.id, &account.client).await.unwrap();
+                            let status = upload.upload(vec![{ env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e) })}], &account.client).await.unwrap();
                             let ms = stopwatch.split().split.as_millis();
                             println!("\t\t\tUploaded test file: {}", upload.url);
                             println!("\t\t\t\tUrl: {}", upload.url);

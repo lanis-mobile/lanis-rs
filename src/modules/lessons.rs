@@ -4,11 +4,13 @@ use crate::utils::crypt::decrypt_encoded_tags;
 use scraper::{Element, ElementRef, Html, Selector};
 use std::collections::BTreeMap;
 use std::time::SystemTime;
+use chrono::{DateTime, FixedOffset};
 use markup5ever::interface::tree_builder::TreeSink;
 use regex::Regex;
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::multipart::Part;
+use crate::utils::datetime::date_time_string_to_date_time;
 
 #[derive(Debug, Clone)]
 pub struct Lessons {
@@ -68,10 +70,51 @@ pub struct LessonUpload {
     pub url: String,
     pub uploaded: Option<String>,
     pub date: Option<String>,
+    pub info: Option<LessonUploadInfo>,
 }
 
 #[derive(Debug, Clone)]
-pub struct UploadFileStatus {
+pub struct LessonUploadInfo {
+    pub course_id: Option<i32>,
+    pub entry_id: Option<i32>,
+    pub start: Option<DateTime<FixedOffset>>,
+    pub end: Option<DateTime<FixedOffset>>,
+    /// Represents if multiple files can be uploaded
+    pub multiple_files: bool,
+    /// Represents if files can be uploaded unlimited times
+    pub unlimited_tries: bool,
+    pub visibility: Option<String>,
+    pub automatic_deletion: Option<String>,
+    pub allowed_file_types: Vec<String>,
+    pub max_file_size: String,
+    /// Has some extra info
+    pub extra: Option<String>,
+    pub own_files: Vec<LessonUploadInfoOwnFile>,
+    pub public_files: Vec<LessonUploadInfoPublicFile>,
+}
+#[derive(Debug, Clone)]
+pub struct LessonUploadInfoStart {
+    pub date: String,
+    pub time: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LessonUploadInfoOwnFile {
+    pub name: String,
+    pub url: String,
+    pub index: String,
+    pub comment: Option<String>,
+}
+#[derive(Debug, Clone)]
+pub struct LessonUploadInfoPublicFile {
+    pub name: String,
+    pub url: String,
+    pub index: String,
+    pub person: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LessonUploadFileStatus {
     pub name: String,
     pub status: String,
     pub message: Option<String>,
@@ -254,6 +297,7 @@ impl Lesson {
                                         }
                                     },
                                     date: Some(date),
+                                    info: None
                                 });
                             } else if closed.is_some() {
                                 let closed = closed.unwrap();
@@ -282,6 +326,7 @@ impl Lesson {
                                         }
                                     },
                                     date: None,
+                                    info: None,
                                 })
                             }
                         }
@@ -477,11 +522,237 @@ impl Homework {
 }
 
 impl LessonUpload {
+    pub async fn get_info(&self, client: &Client) -> Result<LessonUploadInfo, String> {
+        match client.get(&self.url).send().await {
+            Ok(response) => {
+                let document = Html::parse_document(&response.text().await.unwrap());
+
+                let requirements_selector = Selector::parse("div#content div.row div.col-md-12").unwrap();
+                let requirements = document.select(&requirements_selector).nth(1).unwrap();
+
+                async fn select_option_string(selector: &Selector, element: &ElementRef<'_>) -> Option<String> {
+                    match element.select(&selector).nth(0) {
+                        Some(element) => {
+                            let result = element.text().collect::<String>().trim().to_string();
+                            Some(result)
+                        },
+                        None => None,
+                    }
+                }
+
+                let start_selector = Selector::parse("span.editable").unwrap();
+                let start = select_option_string(&start_selector, &requirements);
+
+                let end_selector = Selector::parse("b span.editable").unwrap();
+                let end = select_option_string(&end_selector, &requirements);
+
+                let bool_selector = Selector::parse("i.fa.fa-check-square-o.fa-fw + span.label.label-success").unwrap();
+                let mut bool_select = requirements.select(&bool_selector);
+
+                let multiple_files = {
+                    if bool_select.clone().nth(0).unwrap().text().collect::<String>().trim() == "erlaubt" {
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                let unlimited_tries = {
+                    match bool_select.nth(1) {
+                        Some(option) => {
+                            if option.text().collect::<String>().trim() == "erlaubt" {
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        None => false
+                    }
+
+                };
+
+                let visibility_selector_0 = Selector::parse("i.fa.fa-eye.fa-fw + span.label").unwrap();
+                let visibility_selector_1 = Selector::parse("i.fa.fa-eye-slash.fa-fw + span.label").unwrap();
+                let visibility = requirements.select(&visibility_selector_0).nth(0).and_then(|e| Some(e.text().collect::<String>().trim().to_string())).or_else(||
+                    requirements.select(&visibility_selector_1).nth(0).and_then(|e| Some(e.text().collect::<String>().trim().to_string())).or_else(|| None)
+                );
+
+                let automatic_deletion_selector = Selector::parse("i.fa.fa-trash-o.fa-fw + span.label.label-info").unwrap();
+                let automatic_deletion = select_option_string(&automatic_deletion_selector, &requirements);
+
+                let string_select_selector = Selector::parse("i.fa.fa-file.fa-fw + span.label.label-warning").unwrap();
+                let mut string_select = requirements.select(&string_select_selector);
+
+                let allowed_file_types = {
+                    let mut result = vec![];
+                    let s = string_select.nth(0).unwrap().text().collect::<String>().trim().to_string();
+                    let split = s.split(", ");
+
+                    for s in split {
+                        result.push(s.to_string());
+                    }
+
+                    result
+                };
+
+                let max_file_size = string_select.nth(0).unwrap().text().collect::<String>().trim().to_string();
+
+                let extra_selector = Selector::parse("div.alert.alert-info").unwrap();
+                let extra = {
+                    match select_option_string(&extra_selector, &requirements).await {
+                        Some(s) => Some(s.split("\n").nth(1).unwrap().trim().to_string()),
+                        None => None
+                    }
+                };
+
+                let own_files_element_selector = Selector::parse("div#content div.row div.col-md-12").unwrap();
+                let own_files_element = document.select(&own_files_element_selector).nth(2).unwrap();
+
+
+                let ul_ui_selector = Selector::parse("ul li").unwrap();
+                let own_files_element_for = own_files_element.select(&ul_ui_selector);
+
+
+                let mut own_files = vec![];
+                let file_index_re = Regex::new(r"f=(\d+)").unwrap();
+
+                let a_selector = Selector::parse("a").unwrap();
+                for element in own_files_element_for {
+                    let a = element.select(&a_selector).nth(0).unwrap();
+                    let href = a.value().attr("href").unwrap();
+                    let name = a.text().collect::<String>().trim().to_string();
+                    let url = format!("{}{}", URL::BASE, href);
+                    let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string();
+                    let comment = {
+                        match element.children().nth(10) {
+                            Some(node) => Some(node.value().as_text().unwrap().trim().to_string()),
+                            None => None
+                        }
+                    };
+
+                    own_files.push(LessonUploadInfoOwnFile{
+                        name,
+                        url,
+                        index,
+                        comment,
+                    })
+                }
+
+                // TODO: Test upload form
+                let upload_form_selector = Selector::parse("div.col-md-7 form").unwrap();
+
+                let course_id_selector = Selector::parse("input[name='b']").unwrap();
+                let mut course_id = None;
+
+                let entry_id_selector = Selector::parse("input[name='e']").unwrap();
+                let mut entry_id = None;
+
+                match document.select(&upload_form_selector).nth(0) {
+                    Some(form) => {
+                        course_id = Some(form.select(&course_id_selector).nth(0).unwrap().attr("value").unwrap().parse::<i32>().unwrap());
+                        entry_id = Some(form.select(&entry_id_selector).nth(0).unwrap().attr("value").unwrap().parse::<i32>().unwrap());
+                    }
+                    None => ()
+                }
+
+                let mut public_files = vec![];
+
+                let public_files_selector = Selector::parse("div#content div.row div.col-md-5").unwrap();
+                let person_selector = Selector::parse("span.label.label-info").unwrap();
+                match document.select(&public_files_selector).nth(0) {
+                    Some(public_files_element) => {
+                        for element in public_files_element.select(&ul_ui_selector) {
+                            let a = element.select(&a_selector).nth(0).unwrap();
+                            let href = a.value().attr("href").unwrap();
+                            let name = a.text().collect::<String>().trim().to_string();
+                            let url = format!("{}{}", URL::BASE, href);
+                            let person = element.select(&person_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
+                            let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string();
+
+                            public_files.push(LessonUploadInfoPublicFile{
+                                name,
+                                url,
+                                person,
+                                index,
+                            })
+                        }
+                    }
+                    None => ()
+                }
+
+                let start = start.await;
+                let end = end.await;
+                let automatic_deletion = automatic_deletion.await;
+
+                async fn parse_date_time(s: String) -> Result<DateTime<FixedOffset>, String> {
+                    let ymd = format!("{}", &s.split(" ").nth(2).unwrap());
+                    let hms = format!("{}:{}", s.split(" ").nth(3).unwrap(), "00");
+
+                    let result = date_time_string_to_date_time(&ymd, &hms);
+                    Ok(result.await?)
+                }
+
+                let start = {
+                    match start {
+                        Some(start) => {
+                            let s = start.replace(", ab", "");
+                            Some(parse_date_time(s).await?)
+                        }
+                        None => None,
+                    }
+                };
+
+                let end = {
+                    match end {
+                        Some(end) => {
+                            let s = end.replace(",  spätestens", "");
+                            Some(parse_date_time(s).await?)
+                        }
+                        None => None,
+                    }
+                };
+
+                let result = LessonUploadInfo{
+                    course_id,
+                    entry_id,
+                    start,
+                    end,
+                    multiple_files,
+                    unlimited_tries,
+                    visibility,
+                    automatic_deletion,
+                    allowed_file_types,
+                    max_file_size,
+                    extra,
+                    own_files,
+                    public_files,
+                };
+
+                Ok(result)
+            }
+            Err(e) => {
+                Err(format!("Failed to fetch upload info with error: '{}'", e))
+            }
+        }
+    }
+
+
     // TODO: Test upload function
-    pub async fn upload(&mut self, files: Vec<String>, course_id: i32, entry_id: i32, client: &Client) -> Result<Vec<UploadFileStatus>, String> {
+    /// Takes a vector of file paths (max. 5) and uploads these files to Lanis. <br>
+    /// [LessonUpload::get_info] must be called before calling this function
+    pub async fn upload(&self, files: Vec<String>, client: &Client) -> Result<Vec<LessonUploadFileStatus>, String> {
+        if self.info.is_none() {
+            return Err("No info found in lessons!".to_string());
+        }
+
         if files.is_empty() {
             return Err("Please specify a file path to upload!".to_string())
         }
+
+        let upload_info = self.info.clone().unwrap();
+
+        let course_id = upload_info.course_id.unwrap();
+        let entry_id = upload_info.entry_id.unwrap();
 
         let form = reqwest::multipart::Form::new()
             .part("a", Part::text("sus_abgabe"))
@@ -554,7 +825,7 @@ impl LessonUpload {
                        }
                    };
 
-                   status_messages.push(UploadFileStatus {
+                   status_messages.push(LessonUploadFileStatus {
                        name,
                        status,
                        message,
