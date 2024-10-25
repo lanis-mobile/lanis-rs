@@ -71,6 +71,13 @@ pub struct LessonUpload {
 }
 
 #[derive(Debug, Clone)]
+pub struct UploadFileStatus {
+    pub name: String,
+    pub status: String,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct LessonMark {
     pub name: String,
     pub date: String,
@@ -471,7 +478,7 @@ impl Homework {
 
 impl LessonUpload {
     // TODO: Test upload function
-    pub async fn upload(&mut self, files: Vec<String>, course_id: i32, entry_id: i32, client: &Client) -> Result<String, String> {
+    pub async fn upload(&mut self, files: Vec<String>, course_id: i32, entry_id: i32, client: &Client) -> Result<Vec<UploadFileStatus>, String> {
         if files.is_empty() {
             return Err("Please specify a file path to upload!".to_string())
         }
@@ -519,8 +526,41 @@ impl LessonUpload {
        match client.post(URL::MEIN_UNTERRICHT).multipart(form).headers(headers).send().await {
            Ok(response) => {
                let text = response.text().await.unwrap();
-               println!("Successfully uploaded files! Response: {}", text);
-               Ok(text)
+               let document = Html::parse_document(&text);
+
+               let status_message_group_selector = Selector::parse("div#content div.col-md-12").unwrap();
+               let status_message_group = document.select(&status_message_group_selector).nth(2).unwrap();
+
+               let ul_ui_selector = Selector::parse("ul li").unwrap();
+               let b_selector = Selector::parse("b").unwrap();
+               let span_label_selector = Selector::parse("span.label").unwrap();
+
+               let mut status_messages = vec![];
+               for status_message in status_message_group.select(&ul_ui_selector) {
+                   let name = status_message.select(&b_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
+                   let status = status_message.select(&span_label_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
+                   let message = {
+                       match status_message.children().nth(4) {
+                           Some(message) => {
+                               match message.value().as_text() {
+                                   Some(text) => {
+                                       let result = text.trim().to_string();
+                                       Some(result)
+                                   }
+                                   None => None
+                               }
+                           },
+                           None => None,
+                       }
+                   };
+
+                   status_messages.push(UploadFileStatus {
+                       name,
+                       status,
+                       message,
+                   })
+               }
+               Ok(status_messages)
            }
            Err(e) => {
                Err(format!("Failed to upload file with error: '{}'", e))
