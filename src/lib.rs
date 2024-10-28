@@ -9,6 +9,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use std::env;
+    use std::path::Path;
     use crate::base::account;
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::{get_lessons};
@@ -129,7 +130,9 @@ mod tests {
                         println!("\t\t\tUpload: {:?}", upload);
                         if upload.state {
                             let mut stopwatch = StopWatch::start();
-                            let status = upload.upload(vec![{ env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e) })}], &account.client).await.unwrap();
+                            let path = env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e)});
+                            let path = Path::new(&path);
+                            let status = upload.upload(vec![path], &account.client).await.unwrap();
                             let ms = stopwatch.split().split.as_millis();
                             println!("\t\t\tUploaded test file: {}", upload.url);
                             println!("\t\t\t\tUrl: {}", upload.url);

@@ -3,6 +3,7 @@ use crate::utils::constants::URL;
 use crate::utils::crypt::decrypt_encoded_tags;
 use scraper::{Element, ElementRef, Html, Selector};
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::time::SystemTime;
 use chrono::{DateTime, FixedOffset};
 use markup5ever::interface::tree_builder::TreeSink;
@@ -10,6 +11,8 @@ use regex::Regex;
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::multipart::Part;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use crate::utils::datetime::date_time_string_to_date_time;
 
 #[derive(Debug, Clone)]
@@ -264,7 +267,7 @@ impl Lesson {
                             if open.is_some() {
                                 let open = open.unwrap();
 
-                                let name = open.children().nth(2).unwrap().value().as_text().unwrap().to_string();
+                                let name = open.children().nth(2).unwrap().value().as_text().unwrap().replace("\n","").trim().to_string();
                                 let state = true;
                                 let url = format!("{}{}", URL::BASE, group.select(&upload_url_selector).next().unwrap().value().attr("href").unwrap());
                                 let uploaded = {
@@ -302,7 +305,7 @@ impl Lesson {
                             } else if closed.is_some() {
                                 let closed = closed.unwrap();
 
-                                let name = closed.children().nth(2).unwrap().value().as_text().unwrap().trim().to_string();
+                                let name = closed.children().nth(2).unwrap().value().as_text().unwrap().replace("\n", "").trim().to_string();
                                 let state = false;
                                 let url = format!("{}{}", URL::BASE, group.select(&upload_url_selector).next().unwrap().value().attr("href").unwrap());
                                 let uploaded = {
@@ -638,7 +641,6 @@ impl LessonUpload {
                     })
                 }
 
-                // TODO: Test upload form
                 let upload_form_selector = Selector::parse("div.col-md-7 form").unwrap();
 
                 let course_id_selector = Selector::parse("input[name='b']").unwrap();
@@ -737,10 +739,10 @@ impl LessonUpload {
     }
 
 
-    // TODO: Test upload function
+    // TODO: Fix upload function
     /// Takes a vector of file paths (max. 5) and uploads these files to Lanis. <br>
     /// [LessonUpload::get_info] must be called before calling this function
-    pub async fn upload(&self, files: Vec<String>, client: &Client) -> Result<Vec<LessonUploadFileStatus>, String> {
+    pub async fn upload(&self, files: Vec<&Path>, client: &Client) -> Result<Vec<LessonUploadFileStatus>, String> {
         if self.info.is_none() {
             return Err("No info found in lessons!".to_string());
         }
@@ -762,39 +764,48 @@ impl LessonUpload {
             .part("file1", {
                 match files.get(0) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::text("")
+                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
                 }
             })
             .part("file2", {
                 match files.get(1) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::text("")
+                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
                 }
             })
             .part("file3", {
                 match files.get(2) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::text("")
+                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
                 }
             })
             .part("file4", {
                 match files.get(3) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::text("")
+                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
                 }
             })
             .part("file5", {
                 match files.get(4) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::text("")
+                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
                 }
             });
 
         let mut headers = HeaderMap::new();
         headers.insert("Accept", "*/*".parse().unwrap());
-        headers.insert("Content-Type", "multipart/form-data".parse().unwrap());
+        headers.insert("Accept-Encoding", "application/octet-stream".parse().unwrap());
+        headers.insert("Sec-Fetch-Dest", "document".parse().unwrap());
+        headers.insert("Sec-Fetch-Mode", "navigate".parse().unwrap());
+        headers.insert("Sec-Fetch-Site", "same-origin".parse().unwrap());
 
-       match client.post(URL::MEIN_UNTERRICHT).multipart(form).headers(headers).send().await {
+        return Ok(vec![LessonUploadFileStatus{
+            name: "Not yet finished".to_string(),
+            status: "Same".to_string(),
+            message: Some("Same again".to_string()),
+        }]);
+
+       match client.post(URL::MEIN_UNTERRICHT).headers(headers).multipart(form).send().await {
            Ok(response) => {
                let text = response.text().await.unwrap();
                let document = Html::parse_document(&text);
@@ -806,9 +817,16 @@ impl LessonUpload {
                let b_selector = Selector::parse("b").unwrap();
                let span_label_selector = Selector::parse("span.label").unwrap();
 
+               println!("Status message group: {}", status_message_group.html());
+
                let mut status_messages = vec![];
                for status_message in status_message_group.select(&ul_ui_selector) {
-                   let name = status_message.select(&b_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
+                   println!("status_mesage: {}", status_message.html());
+                   let name = status_message.select(&b_selector).nth(0);
+                   if name.is_none() {
+                       return Err("Failed to upload any file!".to_string());
+                   }
+                   let name = name.unwrap().text().collect::<String>().trim().to_string();
                    let status = status_message.select(&span_label_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
                    let message = {
                        match status_message.children().nth(4) {
