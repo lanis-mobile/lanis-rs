@@ -9,7 +9,7 @@ use chrono::{DateTime, FixedOffset};
 use markup5ever::interface::tree_builder::TreeSink;
 use regex::Regex;
 use reqwest::Client;
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, CONTENT_LENGTH};
 use reqwest::multipart::Part;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
@@ -771,46 +771,46 @@ impl LessonUpload {
             .part("file1", {
                 match files.get(0) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
+                    None => Part::bytes(&[])
                 }
             })
             .part("file2", {
                 match files.get(1) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
+                    None => Part::bytes(&[])
                 }
             })
             .part("file3", {
                 match files.get(2) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
+                    None => Part::bytes(&[])
                 }
             })
             .part("file4", {
                 match files.get(3) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
+                    None => Part::bytes(&[])
                 }
             })
             .part("file5", {
                 match files.get(4) {
                     Some(path) => Part::file(path).await.unwrap(),
-                    None => Part::bytes(&[]).file_name("").mime_str("application/octet-stream").unwrap()
+                    None => Part::bytes(&[])
                 }
             });
 
         let mut headers = HeaderMap::new();
         headers.insert("Accept", "*/*".parse().unwrap());
-        headers.insert("Accept-Encoding", "application/octet-stream".parse().unwrap());
+        headers.insert("Accept-Encoding", "text".parse().unwrap());
         headers.insert("Sec-Fetch-Dest", "document".parse().unwrap());
         headers.insert("Sec-Fetch-Mode", "navigate".parse().unwrap());
         headers.insert("Sec-Fetch-Site", "same-origin".parse().unwrap());
 
-        return Ok(vec![LessonUploadFileStatus{
-            name: "Not yet finished".to_string(),
-            status: "Same".to_string(),
-            message: Some("Same again".to_string()),
-        }]);
+        //return Ok(vec![LessonUploadFileStatus{
+        //    name: "Not yet finished".to_string(),
+        //    status: "Same".to_string(),
+        //    message: Some("Same again".to_string()),
+        //}]);
 
        match client.post(URL::MEIN_UNTERRICHT).headers(headers).multipart(form).send().await {
            Ok(response) => {
@@ -859,7 +859,7 @@ impl LessonUpload {
                Ok(status_messages)
            }
            Err(e) => {
-               Err(format!("Failed to upload file with error: '{}'", e))
+               Err(format!("Failed to upload file with error: '{}'", e.to_string()))
            }
        }
     }

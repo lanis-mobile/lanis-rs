@@ -153,6 +153,7 @@ pub async fn generate(school_id: i32, username: String, password: String) -> Res
     let client = Client::builder()
         .redirect(Policy::none())
         .cookie_provider(std::sync::Arc::clone(&cookie_store))
+        .gzip(true)
         .build()
         .unwrap();
 
