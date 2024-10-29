@@ -628,7 +628,14 @@ impl LessonUpload {
                     let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string();
                     let comment = {
                         match element.children().nth(10) {
-                            Some(node) => Some(node.value().as_text().unwrap().trim().to_string()),
+                            Some(node) => {
+                                // TODO: TEST
+                                println!("Node: {:?}", node);
+                                match node.value().as_text() {
+                                    Some(text) => Some(text.trim().to_string()),
+                                    None => None
+                                }
+                            },
                             None => None
                         }
                     };

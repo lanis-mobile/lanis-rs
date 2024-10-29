@@ -94,12 +94,12 @@ mod tests {
             println!("\tname: {}", lesson.name);
             println!("\tteacher: {}", lesson.teacher);
             println!("\tteacher_short: {:?}", lesson.teacher_short);
-            println!("\t marks: {:?}", lesson.marks);
             println!("\tattendances: {:?}", lesson.attendances);
             println!("\tentry_latest: {:?}", lesson.entry_latest);
             let mut stopwatch = StopWatch::start();
             lesson.set_data(&account).await.unwrap();
-            println!("\tlesson.set_entries() took {}ms", stopwatch.split().split.as_millis());
+            println!("\tlesson.set_data() took {}ms", stopwatch.split().split.as_millis());
+            println!("\tmarks: {:?}", lesson.marks);
             println!("\tentries:");
             let mut stopwatch = StopWatch::start();
             for mut entry in lesson.entries.clone().unwrap() {
