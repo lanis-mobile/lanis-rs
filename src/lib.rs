@@ -1,10 +1,6 @@
-mod base;
-mod utils;
-mod modules;
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod base;
+pub mod utils;
+pub mod modules;
 
 #[cfg(test)]
 mod tests {
@@ -13,14 +9,7 @@ mod tests {
     use crate::base::account;
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::{get_lessons};
-    use super::*;
     use stopwatch_rs::StopWatch;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
 
     #[tokio::test]
     async fn test_schools_get_school_id() {
