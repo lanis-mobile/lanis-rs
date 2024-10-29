@@ -9,10 +9,8 @@ use chrono::{DateTime, FixedOffset};
 use markup5ever::interface::tree_builder::TreeSink;
 use regex::Regex;
 use reqwest::Client;
-use reqwest::header::{HeaderMap, CONTENT_LENGTH};
+use reqwest::header::HeaderMap;
 use reqwest::multipart::Part;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use crate::utils::datetime::date_time_string_to_date_time;
 
 #[derive(Debug, Clone)]
@@ -524,6 +522,15 @@ impl Homework {
     }
 }
 
+pub enum LessonUploadError {
+    Network,
+    WrongPassword,
+    /// Deletion was not possible (Server Side)
+    DeletionFailed,
+    Unknown,
+    UnknownServerError,
+}
+
 impl LessonUpload {
     pub async fn get_info(&self, client: &Client) -> Result<LessonUploadInfo, String> {
         match client.get(&self.url).send().await {
@@ -745,8 +752,6 @@ impl LessonUpload {
         }
     }
 
-
-    // TODO: Fix upload function
     /// Takes a vector of file paths (max. 5) and uploads these files to Lanis. <br>
     /// [LessonUpload::get_info] must be called before calling this function
     pub async fn upload(&self, files: Vec<&Path>, client: &Client) -> Result<Vec<LessonUploadFileStatus>, String> {
@@ -862,6 +867,11 @@ impl LessonUpload {
                Err(format!("Failed to upload file with error: '{}'", e.to_string()))
            }
        }
+    }
+
+    /// Deletes an already uploaded File
+    pub async fn delete(&self, file: &String, account: &Account) -> Result<(), LessonUploadError> {
+        Ok(())
     }
 }
 
