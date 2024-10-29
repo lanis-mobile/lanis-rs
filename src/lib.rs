@@ -94,6 +94,7 @@ mod tests {
             println!("\tname: {}", lesson.name);
             println!("\tteacher: {}", lesson.teacher);
             println!("\tteacher_short: {:?}", lesson.teacher_short);
+            println!("\t marks: {:?}", lesson.marks);
             println!("\tattendances: {:?}", lesson.attendances);
             println!("\tentry_latest: {:?}", lesson.entry_latest);
             let mut stopwatch = StopWatch::start();
