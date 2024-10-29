@@ -128,6 +128,11 @@ mod tests {
                             println!("\t\t\t\tUrl: {}", upload.url);
                             println!("\t\t\t\tStatus: {:?}", status);
                             println!("\t\t\tupload.upload() took {}ms", ms);
+
+                            // Delete uploaded file
+                            let mut stopwatch = StopWatch::start();
+                            upload.delete(&status.get(0).unwrap().name, &account).await.unwrap();
+                            println!("\t\t\tupload.delete() took {}ms", stopwatch.split().split.as_millis());
                         }
                     }
                 }

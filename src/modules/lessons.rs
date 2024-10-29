@@ -1,6 +1,6 @@
 use crate::base::account::Account;
 use crate::utils::constants::URL;
-use crate::utils::crypt::decrypt_encoded_tags;
+use crate::utils::crypt::{decrypt_encoded_tags, encrypt_data};
 use scraper::{Element, ElementRef, Html, Selector};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -522,9 +522,16 @@ impl Homework {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum LessonUploadError {
-    Network,
+    /// Happens if 'info' in [LessonUpload] is None
+    NoInfo,
+    /// Happens if course_id or entry_id in [LessonUpload] is None
+    /// This can happen if no UploadForm exists
+    NoDetailedInfo,
+    Network(String),
     WrongPassword,
+    EncryptionFailed(String),
     /// Deletion was not possible (Server Side)
     DeletionFailed,
     Unknown,
@@ -838,8 +845,8 @@ impl LessonUpload {
                    if name.is_none() {
                        return Err("Failed to upload any file!".to_string());
                    }
-                   let name = name.unwrap().text().collect::<String>().trim().to_string();
                    let status = status_message.select(&span_label_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
+
                    let message = {
                        match status_message.children().nth(4) {
                            Some(message) => {
@@ -852,6 +859,19 @@ impl LessonUpload {
                                }
                            },
                            None => None,
+                       }
+                   };
+
+                   let name = {
+                       if message.is_some() {
+                           let message = message.clone().unwrap();
+                           if !message.contains("Datei mit gleichem Namen schon vorhanden. Datei umbenannt in ") {
+                               name.unwrap().text().collect::<String>().trim().to_string()
+                           } else {
+                               message.split("\"").nth(1).unwrap().replace("\"", "").to_string()
+                           }
+                       } else {
+                           name.unwrap().text().collect::<String>().trim().to_string()
                        }
                    };
 
@@ -871,7 +891,49 @@ impl LessonUpload {
 
     /// Deletes an already uploaded File
     pub async fn delete(&self, file: &String, account: &Account) -> Result<(), LessonUploadError> {
-        Ok(())
+        let client = &account.client;
+        let encrypted_password = encrypt_data(account.password.as_bytes(), &account.key_pair.public_key_string);
+
+        if self.info.is_none() {
+            return Err(LessonUploadError::NoInfo);
+        }
+
+        let info = self.info.clone().unwrap();
+
+        if info.course_id.is_none() || info.entry_id.is_none() {
+            return Err(LessonUploadError::NoInfo);
+        }
+
+        let course_id = info.course_id.clone().unwrap();
+        let entry_id = info.entry_id.clone().unwrap();
+
+        let encrypted_password = encrypted_password.await;
+
+        if encrypted_password.is_err() {
+            return Err(LessonUploadError::EncryptionFailed(encrypted_password.unwrap_err()));
+        }
+
+        match client.post(URL::MEIN_UNTERRICHT).form(&[
+            ("a", "sus_abgabe"),
+            ("d", "delete"),
+            ("b", &course_id.to_string()),
+            ("e", &entry_id.to_string()),
+            ("id", &self.id.to_string()),
+            ("f", file),
+            ("pw", &encrypted_password.unwrap())]).send().await {
+            Ok(response) => {
+                match response.text().await.unwrap().parse::<i32>().unwrap() {
+                    -2 => Err(LessonUploadError::DeletionFailed),
+                    -1 => Err(LessonUploadError::WrongPassword),
+                    0 => Err(LessonUploadError::UnknownServerError),
+                    1 => Ok(()),
+                    _ => Err(LessonUploadError::Unknown),
+                }
+            }
+            Err(e) => {
+                Err(LessonUploadError::Network(e.to_string()))
+            }
+        }
     }
 }
 

@@ -4,13 +4,15 @@ use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, DecodePublicKey};
 use serde::Deserialize;
 use md5::Md5;
-use aes::cipher::{BlockDecryptMut, KeyIvInit};
-use aes::cipher::block_padding::NoPadding;
+use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use aes::cipher::block_padding::{NoPadding, Pkcs7};
 use evpkdf::evpkdf;
+use rand::random;
 use regex::Regex;
 use crate::utils::constants::URL;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
+type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
 
 #[derive(Debug, Clone)]
 pub struct KeyPair {
@@ -146,6 +148,48 @@ async fn get_public_key(client: &Client) -> Result<RsaPublicKey, String> {
         }
     }
 }
+
+pub (crate) async fn encrypt_data(data: &[u8], public_key: &String) -> Result<String, String> {
+    let salt = random::<[u8; 8]>();
+
+    const KEY_SIZE: usize = 256;
+    const IV_SIZE: usize = 128;
+
+    let mut output = [0; (KEY_SIZE + IV_SIZE) / 8];
+    evpkdf::<Md5>(public_key.as_bytes(), &salt, 1, &mut output);
+
+    let (key, iv) = output.split_at(KEY_SIZE / 8);
+
+    let key: [u8; 32] = key.try_into().unwrap();
+    let iv: [u8; 16] = iv.try_into().unwrap();
+
+    let encryptor = Aes256CbcEnc::new(&key.into(), &iv.into());
+
+    let encrypted = {
+
+        let salted = "Salted__".to_string();
+        let salted = salted.as_bytes();
+
+        let mut buf = [0; 256];
+        let encrypted = encryptor.encrypt_padded_b2b_mut::<Pkcs7>(&data, &mut buf);
+        if encrypted.is_err() {
+            return Err(format!("Failed to encrypt data with error: '{}'", encrypted.unwrap_err()));
+        }
+        let encrypted = encrypted.unwrap();
+
+        let mut result: Vec<u8> = Vec::new();
+        result.extend(salted);
+        result.extend(salt);
+        result.extend(encrypted);
+
+        result
+    };
+
+    let result = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, encrypted);
+
+    Ok(result)
+}
+
 
 pub (crate) async fn decrypt_encoded_tags(html_string: &str, key: &String) -> Result<String, String> {
     let exp = Regex::new(r"<encoded>(.*?)</encoded>").unwrap();
