@@ -103,14 +103,14 @@ pub struct LessonUploadInfoStart {
 pub struct LessonUploadInfoOwnFile {
     pub name: String,
     pub url: String,
-    pub index: String,
+    pub index: i32,
     pub comment: Option<String>,
 }
 #[derive(Debug, Clone)]
 pub struct LessonUploadInfoPublicFile {
     pub name: String,
     pub url: String,
-    pub index: String,
+    pub index: i32,
     pub person: String,
 }
 
@@ -639,7 +639,7 @@ impl LessonUpload {
                     let href = a.value().attr("href").unwrap();
                     let name = a.text().collect::<String>().trim().to_string();
                     let url = format!("{}{}", URL::BASE, href);
-                    let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string();
+                    let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string().parse::<i32>().map_err(|_| "Failed to parse index of file as i32")?;
                     let comment = {
                         match element.children().nth(10) {
                             Some(node) => {
@@ -690,7 +690,7 @@ impl LessonUpload {
                             let name = a.text().collect::<String>().trim().to_string();
                             let url = format!("{}{}", URL::BASE, href);
                             let person = element.select(&person_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
-                            let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string();
+                            let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string().parse::<i32>().map_err(|_| "Failed to parse index of file as i32")?;
 
                             public_files.push(LessonUploadInfoPublicFile{
                                 name,
@@ -889,8 +889,8 @@ impl LessonUpload {
        }
     }
 
-    /// Deletes an already uploaded File
-    pub async fn delete(&self, file: &String, account: &Account) -> Result<(), LessonUploadError> {
+    /// Deletes an already uploaded File (Takes a file id)
+    pub async fn delete(&self, file: &i32, account: &Account) -> Result<(), LessonUploadError> {
         let client = &account.client;
         let encrypted_password = encrypt_data(account.password.as_bytes(), &account.key_pair.public_key_string);
 
@@ -919,7 +919,7 @@ impl LessonUpload {
             ("b", &course_id.to_string()),
             ("e", &entry_id.to_string()),
             ("id", &self.id.to_string()),
-            ("f", file),
+            ("f", &file.to_string()),
             ("pw", &encrypted_password.unwrap())]).send().await {
             Ok(response) => {
                 match response.text().await.unwrap().parse::<i32>().unwrap() {

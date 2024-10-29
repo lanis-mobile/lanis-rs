@@ -129,9 +129,22 @@ mod tests {
                             println!("\t\t\t\tStatus: {:?}", status);
                             println!("\t\t\tupload.upload() took {}ms", ms);
 
+                            let i = {
+                                upload.info = Some(upload.get_info(&account.client).await.unwrap());
+                                let own_files = upload.info.clone().unwrap().own_files;
+                                let mut i = -1;
+                                for file in own_files {
+                                    if file.name == status.get(0).unwrap().name {
+                                        i = file.index;
+                                    }
+                                }
+
+                                i
+                            };
+
                             // Delete uploaded file
                             let mut stopwatch = StopWatch::start();
-                            upload.delete(&status.get(0).unwrap().name, &account).await.unwrap();
+                            upload.delete(&i, &account).await.unwrap();
                             println!("\t\t\tupload.delete() took {}ms", stopwatch.split().split.as_millis());
                         }
                     }
