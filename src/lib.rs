@@ -4,7 +4,7 @@ pub mod modules;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Feature {
-    MeinUnttericht
+    MeinUnttericht,
 }
 
 #[cfg(test)]
@@ -162,6 +162,8 @@ mod tests {
             for exam in lesson.exams.clone().unwrap() {
                 println!("\t\t{:?}", exam)
             }
+
+            println!(" ");
         }
         println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
 
