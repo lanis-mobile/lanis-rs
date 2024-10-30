@@ -2,7 +2,7 @@ pub mod base;
 pub mod utils;
 pub mod modules;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Feature {
     MeinUnttericht
 }
@@ -14,6 +14,7 @@ mod tests {
     use crate::base::account;
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::{get_lessons};
+    use super::*;
     use stopwatch_rs::StopWatch;
 
     #[tokio::test]
@@ -70,7 +71,7 @@ mod tests {
                 })
             },
         ).await.unwrap();
-        println!("account::generate() took {}ms", stopwatch.split().split.as_millis());
+        println!("account::new() took {}ms", stopwatch.split().split.as_millis());
 
         let mut stopwatch = StopWatch::start();
         account.prevent_logout().await.unwrap();
@@ -80,6 +81,7 @@ mod tests {
         let mut lessons = get_lessons(&account).await.unwrap();
         println!("get_lessons() took {}ms", stopwatch.split().split.as_millis());
 
+        let _ = account.is_supported(Feature::MeinUnttericht).await.unwrap();
 
         let mut stopwatch = StopWatch::start();
         for lesson in lessons.lessons.iter_mut() {
