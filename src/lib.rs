@@ -2,6 +2,11 @@ pub mod base;
 pub mod utils;
 pub mod modules;
 
+#[derive(Debug, Clone)]
+pub enum Feature {
+    MeinUnttericht
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
@@ -45,7 +50,7 @@ mod tests {
     #[tokio::test]
     async fn test_student_account() {
         let mut stopwatch = StopWatch::start();
-        let account = account::generate(
+        let account = account::new(
             {
                 env::var("LANIS_SCHOOL_ID").unwrap_or_else(|e| {
                     println!("Error ({})\nDid you define 'LANIS_SCHOOL_ID' in env?", e);

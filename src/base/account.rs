@@ -1,15 +1,18 @@
 use crate::base::account::AccountType::{Student, Teacher};
-use crate::utils::constants::URL;
 use crate::utils::crypt::{KeyPair, generate_key_pair};
 
 use reqwest::header::LOCATION;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, RequestBuilder, StatusCode};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use scraper::{Html, Selector};
 use std::collections::BTreeMap;
+use std::fmt::format;
 use std::string::String;
 use std::sync::Arc;
 use reqwest::redirect::Policy;
+use serde::Deserialize;
+use crate::Feature;
+use crate::utils::constants::URL;
 
 #[derive(Debug)]
 pub enum AccountType {
@@ -24,11 +27,18 @@ pub struct Account {
     pub username: String,
     pub password: String,
     pub account_type: Option<AccountType>,
+    pub features: Option<Vec<Feature>>,
     pub data: Option<BTreeMap<String, String>>,
     /// You can generate a new KeyPair by using the Ok result of [generate_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
     pub key_pair: KeyPair,
     pub client: Client,
     pub cookie_store: Arc<CookieStoreMutex>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AccountError {
+    Network(String),
+    FeaturesInit,
 }
 
 impl Account {
@@ -142,10 +152,58 @@ impl Account {
             }
         }
     }
+
+    /// Returns a vector features
+    pub async fn get_features(&self) -> Result<Vec<Feature>, AccountError> {
+
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "lowercase")]
+        struct Entry {
+            link: String,
+        }
+
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "lowercase")]
+        struct Entries {
+            entrys: Vec<Entry>
+        }
+
+        match self.client.get(URL::START).query(&[("a", "ajax"), ("f", "apps")]).send().await {
+            Ok(response) => {
+                let text = response.text().await.unwrap();
+                let entries = serde_json::from_str::<Entries>(&text).unwrap();
+
+                let mut features = Vec::new();
+
+                for entry in entries.entrys {
+                    match entry.link.as_str() {
+                        "meinunterricht.php" => features.push(Feature::MeinUnttericht),
+                        _ => continue,
+                    }
+                }
+
+                Ok(vec![Feature::MeinUnttericht])
+            }
+            Err(e) => Err(AccountError::Network(e.to_string()))
+        }
+    }
+
+    pub async fn is_supported(&self, feature: Feature) -> Result<bool, AccountError> {
+        match &self.features {
+            Some(features) => {
+                //if features.contains(&feature) {
+                //    Ok(true)
+                //} else {
+                    Ok(false)
+                //}
+            }
+            None => Err(AccountError::FeaturesInit)
+        }
+    }
 }
 
 /// Creates a new account struct
-pub async fn generate(school_id: i32, username: String, password: String) -> Result<Account, String> {
+pub async fn new(school_id: i32, username: String, password: String) -> Result<Account, String> {
     let cookie_store = CookieStore::new(None);
     let cookie_store = CookieStoreMutex::new(cookie_store);
     let cookie_store = Arc::new(cookie_store);
@@ -165,6 +223,7 @@ pub async fn generate(school_id: i32, username: String, password: String) -> Res
         password,
         account_type: None,
         data: None,
+        features: None,
         key_pair: key_pair?,
         client,
         cookie_store,
@@ -173,6 +232,13 @@ pub async fn generate(school_id: i32, username: String, password: String) -> Res
     account.create_session().await?;
     account.data = Some(account.fetch_account_data().await?);
     account.account_type = Some(account.get_type().await?);
+
+    match account.get_features().await {
+        Ok(features) => {
+            account.features = Some(features);
+        },
+        Err(e) => return Err(format!("Failed to get Features: {:?}", e))
+    }
 
     Ok(account)
 }

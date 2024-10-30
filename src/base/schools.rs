@@ -3,7 +3,7 @@ use serde::{Deserialize};
 use crate::utils::constants::URL;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct School {
     pub id: i32,
     pub name: String,
