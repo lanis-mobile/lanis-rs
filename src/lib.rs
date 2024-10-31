@@ -149,9 +149,13 @@ mod tests {
                                 i
                             };
 
+                            println!("\t\t\tIndex: {}", i);
+
                             // Delete uploaded file
                             let mut stopwatch = StopWatch::start();
-                            upload.delete(&i, &account).await.unwrap();
+                            if i != -1 {
+                                upload.delete(&i, &account).await.unwrap();
+                            }
                             println!("\t\t\tupload.delete() took {}ms", stopwatch.split().split.as_millis());
                         }
                     }

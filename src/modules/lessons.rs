@@ -415,7 +415,7 @@ impl Lesson {
                         let name = row.child_elements().nth(0).unwrap().text().collect::<String>().trim().to_string();
                         let date = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().to_string();
                         let mark = row.child_elements().nth(2).unwrap().text().collect::<String>().trim().to_string();
-                        let comment = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().split(":").nth(1).unwrap().trim().to_string();
+                        let comment = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().split(":").nth(1).unwrap_or_default().trim().to_string();
                         marks.push(LessonMark{
                             name,
                             date,
@@ -644,7 +644,6 @@ impl LessonUpload {
                         match element.children().nth(10) {
                             Some(node) => {
                                 // TODO: TEST
-                                println!("Node: {:?}", node);
                                 match node.value().as_text() {
                                     Some(text) => Some(text.trim().to_string()),
                                     None => None
@@ -836,11 +835,8 @@ impl LessonUpload {
                let b_selector = Selector::parse("b").unwrap();
                let span_label_selector = Selector::parse("span.label").unwrap();
 
-               println!("Status message group: {}", status_message_group.html());
-
                let mut status_messages = vec![];
                for status_message in status_message_group.select(&ul_ui_selector) {
-                   println!("status_mesage: {}", status_message.html());
                    let name = status_message.select(&b_selector).nth(0);
                    if name.is_none() {
                        return Err("Failed to upload any file!".to_string());
