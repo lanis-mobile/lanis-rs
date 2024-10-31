@@ -16,6 +16,9 @@ mod tests {
     use crate::modules::lessons::{get_lessons};
     use super::*;
     use stopwatch_rs::StopWatch;
+    use crate::base::account::Account;
+    use crate::modules::timetable;
+    use crate::modules::timetable::Week;
 
     #[tokio::test]
     async fn test_schools_get_school_id() {
@@ -47,9 +50,7 @@ mod tests {
         assert_eq!(result.get(0).unwrap().id, 3354)
     }
 
-    // This test everything that's bound to student accounts
-    #[tokio::test]
-    async fn test_student_account() {
+    async fn create_account() -> Account {
         let mut stopwatch = StopWatch::start();
         let account = account::new(
             {
@@ -73,15 +74,40 @@ mod tests {
         ).await.unwrap();
         println!("account::new() took {}ms", stopwatch.split().split.as_millis());
 
+        account
+    }
+
+    #[tokio::test]
+    async fn test_student_account() {
+        let account = create_account().await;
+
         let mut stopwatch = StopWatch::start();
         account.prevent_logout().await.unwrap();
         println!("account.prevent_logout() took {}ms", stopwatch.split().split.as_millis());
 
+        let _ = account.is_supported(Feature::MeinUnttericht).await.unwrap();
+
+        println!("Private Key:\n{}", account.key_pair.private_key_string);
+        println!("Public Key:\n{}", account.key_pair.public_key_string);
+
+        assert_eq!(account.data.is_some(), true);
+    }
+
+    #[tokio::test]
+    async fn test_timetable() {
+        let account = create_account().await;
+
+        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::All), &account.client).await.unwrap();
+        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::Own), &account.client).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_lessons() {
+        let account = create_account().await;
+
         let mut stopwatch = StopWatch::start();
         let mut lessons = get_lessons(&account).await.unwrap();
         println!("get_lessons() took {}ms", stopwatch.split().split.as_millis());
-
-        let _ = account.is_supported(Feature::MeinUnttericht).await.unwrap();
 
         let mut stopwatch = StopWatch::start();
         for lesson in lessons.lessons.iter_mut() {
@@ -168,12 +194,5 @@ mod tests {
             println!(" ");
         }
         println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
-
-        print!("\n");
-
-        println!("Private Key:\n{}", account.key_pair.private_key_string);
-        println!("Public Key:\n{}", account.key_pair.public_key_string);
-
-        assert_eq!(account.data.is_some(), true);
     }
 }

@@ -1,2 +1,2 @@
 pub mod lessons;
-mod timetable;
+pub mod timetable;
