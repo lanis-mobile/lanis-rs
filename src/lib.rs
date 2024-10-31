@@ -149,8 +149,6 @@ mod tests {
                                 i
                             };
 
-                            println!("\t\t\tIndex: {}", i);
-
                             // Delete uploaded file
                             let mut stopwatch = StopWatch::start();
                             if i != -1 {
