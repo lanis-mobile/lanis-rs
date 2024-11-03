@@ -1,7 +1,9 @@
-use chrono::{DateTime, FixedOffset, NaiveDate};
+use std::collections::BTreeMap;
+use chrono::{DateTime, Days, FixedOffset, NaiveDate, NaiveTime};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use crate::utils::constants::URL;
+use crate::utils::datetime::merge_naive_date_time_to_datetime;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -25,14 +27,8 @@ pub enum LanisType {
 #[derive(Debug, Clone)]
 pub struct Week {
     pub week: NaiveDate,
-    pub week_type: char,
-    pub monday: Vec<Entry>,
-    pub tuesday: Vec<Entry>,
-    pub wednesday: Vec<Entry>,
-    pub thursday: Vec<Entry>,
-    pub friday: Vec<Entry>,
-    pub saturday: Vec<Entry>,
-    pub sunday: Vec<Entry>,
+    pub week_type: Option<char>,
+    pub entries: Vec<Entry>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,31 +58,31 @@ pub struct Substitution {
 }
 
 impl Week {
-    pub async fn new(provider: Provider, client: &Client) -> Result<(), Error> {
-        match provider {
+    pub async fn new(provider: Provider, client: &Client) -> Result<Week, Error> {
+        return match provider {
             Provider::Lanis(LanisType::All) => {
                 let result = lanis(LanisType::All, client).await?;
-                return Ok(result)
+                Ok(result)
             }
             Provider::Lanis(LanisType::Own) => {
                 let result = lanis(LanisType::Own, client).await?;
-                return Ok(result)
+                Ok(result)
             }
             // TODO: Implement Untis support
             Provider::Untis => {
-                return Ok(())
+                unimplemented!();
                 // Ok(untis(&client).await?)
             }
-        }
+        };
 
-        async fn lanis(lanis_type: LanisType, client: &Client) -> Result<(), Error> {
+        async fn lanis(lanis_type: LanisType, client: &Client) -> Result<Week, Error> {
             let mut week = NaiveDate::parse_from_str("01.01.1970", "%d.%m.%Y").map_err(|_| Error::Parse("failed to parse initial date".to_string()))?;
-            let document = get(LanisType::All, client).await?;
+            let document = get(lanis_type, client).await?;
 
 
             let result = parse(&document, &mut week).await?;
 
-            async fn parse(document_text: &String, mut week: &mut NaiveDate) -> Result<(), Error> {
+            async fn parse(document_text: &String, week: &mut NaiveDate) -> Result<Week, Error> {
                 let document = Html::parse_document(&document_text);
 
                 let tr_selector = Selector::parse("tr").unwrap();
@@ -98,7 +94,7 @@ impl Week {
                 }
                 let rows = row.unwrap();
 
-                let day_count = rows.select(&tr_td_selector).count() as i32 - 1;
+                let day_count = rows.select(&tr_td_selector).count() as i32;
 
                 let date_selector = Selector::parse("div.col-md-6>span").unwrap();
                 let date = document.select(&date_selector).nth(0).unwrap().text().collect::<String>().replace("\n", "").replace(" ", "").replace("Stundenplangültig", "").replace("ab", "").trim().to_string();
@@ -106,26 +102,67 @@ impl Week {
                 *week = date;
 
                 let lesson_selector = Selector::parse("div.stunde ").unwrap();
-                let school_hour_selector = Selector::parse("span.hidden-xs>b").unwrap();
-                let rows = document.select(&tr_selector);
-                let mut day = 0;
-                for row in rows {
-                    if row.select(&tr_td_selector).nth(0).is_none() || row.select(&tr_td_selector).nth(0).unwrap().text().collect::<String>().replace(" ", "").replace("\n", "").is_empty() { continue; }
+                let school_hour_time_selector = Selector::parse("span.hidden-xs>span.VonBis>small").unwrap();
 
-                    let mut current_school_hour = -1;
+                let rows = document.select(&tr_selector);
+                let mut entries = vec![];
+                let mut hour_times = BTreeMap::new();
+
+                let elements = document.select(&school_hour_time_selector);
+
+                for (i, element) in elements.enumerate() {
+                    // Time of School hours
+                    let text = element.text().collect::<String>();
+
+                    let time_string = text.replace(" ", "");
+                    let mut time_string = time_string.split("-");
+
+                    async fn get_time(time_string: &mut String) -> Result<NaiveTime, Error> {
+                        NaiveTime::parse_from_str(&format!("{}:00", time_string), "%H:%M:%S").map_err(|_| Error::Parse(format!("Failed to parse time string '{}' as NaiveTime", time_string)))
+                    }
+
+                    let start_time = get_time(&mut time_string.nth(0).unwrap().to_string()).await?;
+                    let end_time = get_time(&mut time_string.nth(0).unwrap().to_string()).await?;
+
+                    hour_times.insert(i+1, [start_time, end_time]);
+                }
+
+                let mut claimed_slots: BTreeMap<[i32; 2], bool> = BTreeMap::new();
+                for i in 1..hour_times.len() as i32 + 1 {
+                    for j in 1..day_count {
+                        claimed_slots.insert([i, j], false);
+                    }
+                }
+
+                for (ri, row) in rows.enumerate() {
+                    if ri == 0 { continue; }
+                    if ri == 1 { continue; }
 
                     let columns = row.select(&tr_td_selector);
-                    for column in columns {
-                        if column.text().collect::<String>().trim().is_empty() { continue; }
+                    for (ci, column) in columns.enumerate() {
+                        if ci == 0 { continue; }
 
-                        let element = column.select(&school_hour_selector).nth(0);
-                        if element.is_some() {
-                            let result = element.unwrap().text().collect::<String>().replace(". Stunde", "").trim().parse::<i32>().unwrap();
-                            current_school_hour = result;
-                        }
+                        // Choose next free slot as day
+                        let day_hour = {
+                            let mut result = [1, 1];
+                            for (key, value) in &claimed_slots {
+                                if !value {
+                                    result = *key;
+                                    break;
+                                }
+                            }
+                            result
+                        };
+
+                        let day = day_hour[1];
+                        let current_school_hour = day_hour[0];
+
 
                         let attr = column.attr("rowspan");
-                        if attr.is_none() { continue; }
+                        if attr.is_none() {
+                            claimed_slots.insert([current_school_hour, day], true);
+                            continue;
+                        }
 
                         let hours = attr.unwrap().parse::<i32>().map_err(|_| Error::Parse("failed to parse rowspan as i32".to_string()))?;
 
@@ -133,30 +170,59 @@ impl Week {
                             let name = lesson.text().nth(1).unwrap().replace("\n","").trim().to_string();
                             let room = lesson.text().nth(2).unwrap().replace("\n","").trim().to_string();
                             let teacher = lesson.text().nth(3).unwrap().replace("\n","").trim().to_string();
+                            let teacher_long = None;
                             let school_hours = {
                                 if hours >= 2 {
                                     let mut result = vec![];
                                     for i in current_school_hour..(current_school_hour+hours) {
+                                        claimed_slots.insert([i, day], true);
                                         result.push(i);
                                     }
                                     result
                                 } else {
+                                    claimed_slots.insert([current_school_hour, day], true);
                                     vec![current_school_hour]
                                 }
                             };
 
-                            println!("Name: {} room: {} teacher: {} school_hours {:?} day: {}", name, room, teacher, school_hours, day);
-                        }
+                            let start = merge_naive_date_time_to_datetime(&date.checked_add_days(
+                                Days::new((day - 1) as u64)).unwrap(), &hour_times.get(&(school_hours.first().unwrap().clone() as usize)).unwrap()[0])
+                                .await.map_err(|e| Error::Parse(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
 
-                        if day == 4 {
-                            day == 0;
-                        } else {
-                            day += 1;
+                            let end =  merge_naive_date_time_to_datetime(&date.checked_add_days(
+                                Days::new((day - 1) as u64)).unwrap(), &hour_times.get(&(school_hours.last().unwrap().clone() as usize)).unwrap()[1])
+                                .await.map_err(|e| Error::Parse(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
+
+                            let substitution = None;
+
+                            entries.push(Entry{
+                                name,
+                                teacher,
+                                teacher_long,
+                                school_hours,
+                                start,
+                                end,
+                                room,
+                                substitution,
+                            });
                         }
                     }
                 }
 
-                Ok(())
+                let week_type_selector = Selector::parse("div.col-md-6.hidden-pdf.hidden-print>div.pull-right.hidden-pdf>span#aktuelleWoche").unwrap();
+                let week_type = {
+                    match document.select(&week_type_selector).nth(0) {
+                        Some(week_type) => Some(week_type.text().collect::<String>().trim().to_string().chars().next().unwrap()),
+                        None => None
+                    }
+                };
+
+                let week = Week{
+                    week: week.to_owned(),
+                    week_type,
+                    entries,
+                };
+                Ok(week)
             }
 
             async fn get(lanis_type: LanisType, client: & Client) -> Result<String, Error> {

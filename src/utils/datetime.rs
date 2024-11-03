@@ -1,7 +1,19 @@
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
+
+#[derive(Debug)]
+pub(crate) enum DateTimeError {
+    DateInvalid(String),
+    TimeInvalid(String),
+}
 
 /// Converts CEST DateTime to NaiveDateTime (takes DateTime String in format: %d.%m.%Y %H:%M:%S)
-pub(crate) async fn date_time_string_to_date_time(date: &String, time: &String) -> Result<DateTime<FixedOffset>, String> {
-    let date_time = DateTime::parse_from_str(&format!("{} {} +02:00", date, time), "%d.%m.%Y %H:%M:%S %z").map_err(|e| format!("Invalid date: {}", e))?;
+pub(crate) async fn date_time_string_to_datetime(date: &String, time: &String) -> Result<DateTime<FixedOffset>, DateTimeError> {
+    let date_time = DateTime::parse_from_str(&format!("{} {} +02:00", date, time), "%d.%m.%Y %H:%M:%S %z").map_err(|e| DateTimeError::DateInvalid(e.to_string()))?;
+    Ok(date_time)
+}
+
+/// Merges a [NaiveDate] with a [NaiveTime] to a [DateTime] (CEST)
+pub(crate) async fn merge_naive_date_time_to_datetime(date: &NaiveDate, time: &NaiveTime) -> Result<DateTime<FixedOffset>, DateTimeError> {
+    let date_time = DateTime::parse_from_str(&format!("{} {} +02:00", date, time), "%Y-%m-%d %H:%M:%S %z").map_err(|e| DateTimeError::DateInvalid(e.to_string()))?;
     Ok(date_time)
 }

@@ -47,7 +47,7 @@ mod tests {
         let client = reqwest::Client::new();
 
         let result = get_schools(client).await.unwrap();
-        assert_eq!(result.get(0).unwrap().id, 3354)
+        assert_eq!(result.get(0).unwrap().id, 3354);
     }
 
     async fn create_account() -> Account {
@@ -84,6 +84,7 @@ mod tests {
         let mut stopwatch = StopWatch::start();
         account.prevent_logout().await.unwrap();
         println!("account.prevent_logout() took {}ms", stopwatch.split().split.as_millis());
+        println!();
 
         let _ = account.is_supported(Feature::MeinUnttericht).await.unwrap();
 
@@ -91,14 +92,27 @@ mod tests {
         println!("Public Key:\n{}", account.key_pair.public_key_string);
 
         assert_eq!(account.data.is_some(), true);
+
+        println!()
     }
 
     #[tokio::test]
     async fn test_timetable() {
         let account = create_account().await;
 
+        let mut stopwatch = StopWatch::start();
         let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::All), &account.client).await.unwrap();
+        let ms = stopwatch.split().split.as_millis();
+        println!("All: {:?}", time_table_week);
+        println!("Week::new() took {}ms", ms);
+        println!();
+        let mut stopwatch = StopWatch::start();
         let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::Own), &account.client).await.unwrap();
+        let ms = stopwatch.split().split.as_millis();
+        println!("Own: {:?}", time_table_week);
+        println!("Week::new() took {}ms", ms);
+
+        println!()
     }
 
     #[tokio::test]
@@ -194,5 +208,7 @@ mod tests {
             println!(" ");
         }
         println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
+
+        println!()
     }
 }
