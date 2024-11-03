@@ -10,6 +10,7 @@ use std::string::String;
 use std::sync::Arc;
 use reqwest::redirect::Policy;
 use serde::Deserialize;
+use crate::base::schools::{get_school, get_schools, School};
 use crate::Feature;
 use crate::utils::constants::URL;
 
@@ -38,7 +39,7 @@ pub enum AccountType {
 /// ```
 #[derive(Debug, Clone)]
 pub struct Account {
-    pub school_id: i32,
+    pub school: School,
     pub username: String,
     pub password: String,
     pub account_type: Option<AccountType>,
@@ -56,6 +57,8 @@ pub enum AccountError {
     Network(String),
     /// Happens if anything goes wrong with logging in
     Login(String),
+    /// Happens if no school with the provided id is found
+    NoSchool(String),
     /// Happens if the "feature" field in [Account] is None
     FeaturesInit,
     /// Happens if the "data" field in [Account] is None
@@ -74,8 +77,8 @@ impl Account {
       * Doesn't need to be run if [new] was used
      */
     pub async fn create_session(&self) -> Result<(), AccountError> {
-        let params = [("user2", self.username.clone()), ("user", format!("{}.{}", self.school_id, self.username.clone())), ("password", self.password.clone())];
-        let response = self.client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school_id)).form(&params).send();
+        let params = [("user2", self.username.clone()), ("user", format!("{}.{}", self.school.id, self.username.clone())), ("password", self.password.clone())];
+        let response = self.client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school.id)).form(&params).send();
         match response.await {
             Ok(response) => {
                 if response.status() == StatusCode::FOUND {
@@ -255,8 +258,11 @@ pub async fn new(school_id: i32, username: String, password: String) -> Result<A
         return Err(AccountError::KeyPair);
     }
 
+    let schools = get_schools(&client).await.map_err(|e| AccountError::Network(e.to_string()))?;
+    let school = get_school(&school_id, &schools).await.map_err(|_| AccountError::NoSchool(format!("No school with id {}", school_id)))?;
+
     let mut account = Account {
-        school_id,
+        school,
         username,
         password,
         account_type: None,

@@ -10,6 +10,10 @@ pub struct School {
     pub city: String,
 }
 
+pub enum Error {
+    NotFound(String),
+}
+
 /// Returns the ID of a school based on name and city and takes a Vector of all schools <br> Returns -1 if no school was found
 pub async fn get_school_id(name: &str, city: &str, schools: &Vec<School>) -> i32 {
     for school in schools {
@@ -22,8 +26,17 @@ pub async fn get_school_id(name: &str, city: &str, schools: &Vec<School>) -> i32
     -1
 }
 
-/// If school.json already exists and <code>force_refresh</code> is <code>true</code> school.json will be overwritten
-pub async fn get_schools(client: Client) -> Result<Vec<School>, String> {
+/// Returns a [School] based on the provided ID
+pub async fn get_school(id: &i32, schools: &Vec<School>) -> Result<School, Error> {
+    for school in schools {
+        if school.id == *id {
+            return Ok(school.clone())
+        }
+    }
+    Err(Error::NotFound(format!("No school with id {} found", id)))
+}
+
+pub async fn get_schools(client: &Client) -> Result<Vec<School>, String> {
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     pub struct JsonSchool {

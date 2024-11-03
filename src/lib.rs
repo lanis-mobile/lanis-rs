@@ -46,7 +46,7 @@ mod tests {
     async fn test_schools_get_schools() {
         let client = reqwest::Client::new();
 
-        let result = get_schools(client).await.unwrap();
+        let result = get_schools(&client).await.unwrap();
         assert_eq!(result.get(0).unwrap().id, 3354);
     }
 
