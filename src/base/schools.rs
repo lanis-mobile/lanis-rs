@@ -12,6 +12,7 @@ pub struct School {
 
 pub enum Error {
     NotFound(String),
+    UntisAPI(String),
 }
 
 /// Returns the ID of a school based on name and city and takes a Vector of all schools <br> Returns -1 if no school was found
@@ -24,6 +25,11 @@ pub async fn get_school_id(name: &str, city: &str, schools: &Vec<School>) -> i32
         }
     }
     -1
+}
+
+/// Returns all schools matching the query or an empty vec if there are too many results.
+pub async fn search_untis_school(query: &str) -> Result<Vec<untis::School>, Error> {
+    untis::schools::search(query).map_err(|e| Error::UntisAPI(e.to_string()))
 }
 
 /// Returns a [School] based on the provided ID
