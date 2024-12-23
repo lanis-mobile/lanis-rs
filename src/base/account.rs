@@ -238,6 +238,7 @@ impl Account {
                 for entry in entries.entrys {
                     match entry.link.as_str() {
                         "meinunterricht.php" => features.push(Feature::MeinUnttericht),
+                        "stundenplan.php" => features.push(Feature::LanisTimetable),
                         _ => continue,
                     }
                 }

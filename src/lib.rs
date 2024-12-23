@@ -127,7 +127,7 @@ mod tests {
 
         // Lanis (All)
         let mut stopwatch = StopWatch::start();
-        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::All), &account.client, chrono::Local::now().date_naive()).await.unwrap();
+        let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::All), &account.client, chrono::Local::now().date_naive()).await.unwrap();
         let ms = stopwatch.split().split.as_millis();
         println!("Lanis All: {:?}", time_table_week);
         println!("Week::new() took {}ms", ms);
@@ -135,7 +135,7 @@ mod tests {
 
         // Lanis (Own)
         let mut stopwatch = StopWatch::start();
-        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::Own), &account.client, chrono::Local::now().date_naive()).await.unwrap();
+        let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::Own), &account.client, chrono::Local::now().date_naive()).await.unwrap();
         let ms = stopwatch.split().split.as_millis();
         println!("Lanis Own: {:?}", time_table_week);
         println!("Week::new() took {}ms", ms);
