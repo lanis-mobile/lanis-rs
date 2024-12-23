@@ -1,59 +1,62 @@
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use chrono::{DateTime, Days, FixedOffset, NaiveDate, NaiveTime};
 use reqwest::Client;
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
+use crate::base::account::UntisSecrets;
 use crate::utils::constants::URL;
 use crate::utils::datetime::merge_naive_date_time_to_datetime;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum Error {
     Network(String),
     Parse(String),
     Html(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum Provider {
     Lanis(LanisType),
     Untis,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum LanisType {
     All,
     Own,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Week {
     pub week: NaiveDate,
     pub week_type: Option<char>,
     pub entries: Vec<Entry>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Entry {
-    /// The short of the subject (e.g. INF)
+    pub status: LessonEntryStatus,
+    /// The name of the Subject
     pub name: String,
-    /// The short of the teacher (e.g. RST)
-    pub teacher: String,
-    /// The full lastname of the teacher (only available if [Provider::Untis] is used as TimeTable [Provider])
-    pub teacher_long: Option<String>,
+    pub teachers: Vec<String>,
     pub school_hours: Vec<i32>,
     pub start: DateTime<FixedOffset>,
     pub end: DateTime<FixedOffset>,
     /// The room number (e.g. B209)
     pub room: String,
-    /// Only available if [Provider::Untis] is used as TimeTable [Provider]
-    pub substitution: Option<Substitution>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub enum LessonEntryStatus {
+    Normal,
+    Abnormal,
+    Cancelled
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct Substitution {
-    /// The short of the teacher (e.g. RST)
     pub new_teacher: String,
-    /// The full lastname of the teacher
-    pub new_teacher_long: String,
     pub text: String,
 }
 
@@ -169,8 +172,10 @@ impl Week {
                         for lesson in column.select(&lesson_selector) {
                             let name = lesson.text().nth(1).unwrap().replace("\n","").trim().to_string();
                             let room = lesson.text().nth(2).unwrap().replace("\n","").trim().to_string();
-                            let teacher = lesson.text().nth(3).unwrap().replace("\n","").trim().to_string();
-                            let teacher_long = None;
+                            let mut teachers = Vec::new();
+                            for teacher in lesson.text().nth(3).unwrap().split("\n") {
+                                if !teacher.trim().is_empty() { teachers.push(teacher.to_string()); }
+                            }
                             let school_hours = {
                                 if hours >= 2 {
                                     let mut result = vec![];
@@ -193,17 +198,14 @@ impl Week {
                                 Days::new((day - 1) as u64)).unwrap(), &hour_times.get(&(school_hours.last().unwrap().clone() as usize)).unwrap()[1])
                                 .await.map_err(|e| Error::Parse(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
 
-                            let substitution = None;
-
                             entries.push(Entry{
+                                status: LessonEntryStatus::Normal,
                                 name,
-                                teacher,
-                                teacher_long,
+                                teachers,
                                 school_hours,
                                 start,
                                 end,
                                 room,
-                                substitution,
                             });
                         }
                     }
@@ -242,7 +244,7 @@ impl Week {
                                     return Err(Error::Network(format!("HTTP error status: {}", response.status())))
                                 }
 
-                                let text = response.text().await.map_err(|e| Error::Parse("failed to parse response text".to_string()))?;
+                                let text = response.text().await.map_err(|_| Error::Parse("failed to parse response text".to_string()))?;
                                 let html = Html::parse_document(&text);
 
                                 let all_selector = Selector::parse("#all").unwrap();
@@ -274,7 +276,7 @@ impl Week {
             Ok(result)
         }
 
-        async fn untis(client: &Client) -> Result<Week, Error> {
+        async fn untis(untis_secrets: &UntisSecrets) -> Result<Week, Error> {
             unimplemented!()
         }
     }

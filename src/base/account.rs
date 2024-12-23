@@ -1,6 +1,4 @@
 use crate::base::account::AccountType::{Student, Teacher};
-use crate::utils::crypt::{KeyPair, generate_key_pair};
-
 use reqwest::header::LOCATION;
 use reqwest::{Client, StatusCode};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
@@ -9,49 +7,33 @@ use std::collections::BTreeMap;
 use std::string::String;
 use std::sync::Arc;
 use reqwest::redirect::Policy;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use crate::base::schools::{get_school, get_schools, School};
 use crate::Feature;
 use crate::utils::constants::URL;
-
-#[derive(Debug, Clone)]
+use crate::utils::crypt::{decrypt_any, encrypt_any, generate_lanis_key_pair, CryptorError, LanisKeyPair};
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum AccountType {
     Student,
     Teacher,
     Parent,
 }
 
-/// # Example
-/// ### Automatic Creation
-/// ```no_run
-/// # use lanis_rs::base::account;
-/// #
-/// # use lanis_rs::base::account::AccountError;
-///
-/// async fn run() -> Result<(), AccountError>{
-/// let account = account::new(
-///     9999,
-///     "rust.example".to_string(),
-///     "ILoveRust1234!".to_string())
-///     .await?;
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug, Clone)]
+/// Stores everything that is needed at Runtime and related to the Account
+#[derive(Clone, Debug)]
 pub struct Account {
     pub school: School,
-    pub username: String,
-    pub password: String,
+    pub secrets: AccountSecrets,
     pub account_type: Option<AccountType>,
     pub features: Option<Vec<Feature>>,
     pub data: Option<BTreeMap<String, String>>,
-    /// You can generate a new KeyPair by using the Ok result of [generate_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
-    pub key_pair: KeyPair,
+    /// You can generate a new KeyPair by using the Ok result of [generate_lanis_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
+    pub key_pair: LanisKeyPair,
     pub client: Client,
     pub cookie_store: Arc<CookieStoreMutex>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum AccountError {
     /// Can happen when doing a request to lanis
     Network(String),
@@ -71,13 +53,55 @@ pub enum AccountError {
 }
 
 impl Account {
+    /// Creates a new [Account] from a school_id, username and password <br>
+    /// When using [new] a session gets automatically created and all fields will be set
+    pub async fn new(secrets: AccountSecrets) -> Result<Account, AccountError> {
+        let cookie_store = CookieStore::new(None);
+        let cookie_store = CookieStoreMutex::new(cookie_store);
+        let cookie_store = Arc::new(cookie_store);
+
+        let client = Client::builder()
+            .redirect(Policy::none())
+            .cookie_provider(std::sync::Arc::clone(&cookie_store))
+            .gzip(true)
+            .build()
+            .unwrap();
+
+        let key_pair = generate_lanis_key_pair(128, &client).await;
+
+        if key_pair.is_err() {
+            return Err(AccountError::KeyPair);
+        }
+
+        let schools = get_schools(&client).await.map_err(|e| AccountError::Network(e.to_string()))?;
+        let school = get_school(&secrets.school_id, &schools).await.map_err(|_| AccountError::NoSchool(format!("No school with id {}", secrets.school_id)))?;
+
+        let mut account = Account {
+            school,
+            secrets,
+            account_type: None,
+            data: None,
+            features: None,
+            key_pair: key_pair.unwrap(),
+            client,
+            cookie_store,
+        };
+
+        account.create_session().await?;
+        account.data = Some(account.fetch_account_data().await?);
+        account.account_type = Some(account.get_type().await?);
+        account.features = Some(account.get_features().await?);
+
+        Ok(account)
+    }
+
     /**
       * Takes an account and a 'reqwest' client and generates a new session for lanis <br>
       * Needs to be run on every new 'reqwest' client <br>
       * Doesn't need to be run if [new] was used
      */
     pub async fn create_session(&self) -> Result<(), AccountError> {
-        let params = [("user2", self.username.clone()), ("user", format!("{}.{}", self.school.id, self.username.clone())), ("password", self.password.clone())];
+        let params = [("user2", self.secrets.username.clone()), ("user", format!("{}.{}", self.school.id, self.secrets.username.clone())), ("password", self.secrets.password.clone())];
         let response = self.client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school.id)).form(&params).send();
         match response.await {
             Ok(response) => {
@@ -238,45 +262,42 @@ impl Account {
     }
 }
 
-/// Creates a new [Account] from a school_id, username and password <br>
-/// When using [new] a session gets automatically created and all fields will be set
-pub async fn new(school_id: i32, username: String, password: String) -> Result<Account, AccountError> {
-    let cookie_store = CookieStore::new(None);
-    let cookie_store = CookieStoreMutex::new(cookie_store);
-    let cookie_store = Arc::new(cookie_store);
+/// Contains the account secrets for Lanis and maybe Untis <br>
+/// This will be used for re-login. <br>
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub struct AccountSecrets {
+    pub school_id: i32,
+    pub username: String,
+    pub password: String,
+    pub untis_secrets: Option<UntisSecrets>
+}
 
-    let client = Client::builder()
-        .redirect(Policy::none())
-        .cookie_provider(std::sync::Arc::clone(&cookie_store))
-        .gzip(true)
-        .build()
-        .unwrap();
-
-    let key_pair = generate_key_pair(128, &client).await;
-
-    if key_pair.is_err() {
-        return Err(AccountError::KeyPair);
+impl AccountSecrets {
+    pub fn new(school_id: i32, username: String, password: String) -> AccountSecrets {
+        Self { school_id, username, password, untis_secrets: None }
     }
 
-    let schools = get_schools(&client).await.map_err(|e| AccountError::Network(e.to_string()))?;
-    let school = get_school(&school_id, &schools).await.map_err(|_| AccountError::NoSchool(format!("No school with id {}", school_id)))?;
+    pub async fn from_encrypted(data: &[u8], key: &[u8; 32]) -> Result<AccountSecrets, CryptorError> {
+        decrypt_any(data, key).await
+    }
 
-    let mut account = Account {
-        school,
-        username,
-        password,
-        account_type: None,
-        data: None,
-        features: None,
-        key_pair: key_pair.unwrap(),
-        client,
-        cookie_store,
-    };
+    pub async fn encrypt(&self, key: &[u8; 32]) -> Result<Vec<u8>, CryptorError> {
+        encrypt_any(&self, key).await
+    }
+}
 
-    account.create_session().await?;
-    account.data = Some(account.fetch_account_data().await?);
-    account.account_type = Some(account.get_type().await?);
-    account.features = Some(account.get_features().await?);
+/// Contains the account secrets for Untis <br>
+/// This will be used for re-login. <br>
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub struct UntisSecrets {
+    /// The internal school name from Untis and not the display name
+    pub school_name: String,
+    pub username: String,
+    pub password: String,
+}
 
-    Ok(account)
+impl UntisSecrets {
+    pub fn new(school_name: String, username: String, password: String) -> UntisSecrets {
+        Self { school_name, username, password }
+    }
 }

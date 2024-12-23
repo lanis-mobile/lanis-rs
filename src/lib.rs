@@ -1,24 +1,47 @@
+use serde::{Deserialize, Serialize};
+
 pub mod base;
 pub mod utils;
 pub mod modules;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum Feature {
+    LanisTimetable,
     MeinUnttericht,
 }
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-    use std::path::Path;
-    use crate::base::account;
+    use super::*;
+
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::{get_lessons};
-    use super::*;
-    use stopwatch_rs::StopWatch;
-    use crate::base::account::Account;
+    use crate::base::account::{Account, AccountSecrets};
     use crate::modules::timetable;
     use crate::modules::timetable::Week;
+
+    use std::{env, fs};
+    use std::path::Path;
+    use stopwatch_rs::StopWatch;
+    use crate::utils::crypt::{decrypt_any, encrypt_any};
+
+    #[tokio::test]
+    async fn test_encryption() {
+        let text = fs::read_to_string("test_file.txt").unwrap();
+
+        #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+        struct TestText {
+            text: String,
+        }
+
+        let data = TestText { text };
+        let key = b"ILikeToast12!EncryptionIsSoNice!";
+
+        let encrypted = encrypt_any(&data, key).await.unwrap();
+        let decrypted: TestText = decrypt_any(&encrypted, key).await.unwrap();
+
+        assert_eq!(data, decrypted);
+    }
 
     #[tokio::test]
     async fn test_schools_get_school_id() {
@@ -52,7 +75,8 @@ mod tests {
 
     async fn create_account() -> Account {
         let mut stopwatch = StopWatch::start();
-        let account = account::new(
+
+        let account_secrets = AccountSecrets::new(
             {
                 env::var("LANIS_SCHOOL_ID").unwrap_or_else(|e| {
                     println!("Error ({})\nDid you define 'LANIS_SCHOOL_ID' in env?", e);
@@ -71,7 +95,8 @@ mod tests {
                     String::from("")
                 })
             },
-        ).await.unwrap();
+        );
+        let account = Account::new(account_secrets).await.unwrap();
         println!("account::new() took {}ms", stopwatch.split().split.as_millis());
 
         account

@@ -1,21 +1,21 @@
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
-use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, DecodePublicKey};
-use serde::Deserialize;
+use rsa::pkcs8::{DecodePublicKey, EncodePrivateKey, EncodePublicKey};
+use serde::{Deserialize, Serialize};
 use md5::Md5;
 use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use aes::cipher::block_padding::{NoPadding, Pkcs7};
-use evpkdf::evpkdf;
 use rand::random;
 use regex::Regex;
+use serde::de::DeserializeOwned;
 use crate::utils::constants::URL;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
 
-#[derive(Debug, Clone)]
-pub struct KeyPair {
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct LanisKeyPair {
     pub private_key: RsaPrivateKey,
     pub public_key: RsaPublicKey,
     /// Private key in PKCS#8 format
@@ -27,7 +27,7 @@ pub struct KeyPair {
 }
 
 /// Takes key_size (in bits) and returns an RSA KeyPair
-pub async fn generate_key_pair(key_size: usize, client: &Client) -> Result<KeyPair, String> {
+pub async fn generate_lanis_key_pair(key_size: usize, client: &Client) -> Result<LanisKeyPair, String> {
     let mut rng = rand::thread_rng();
     match RsaPrivateKey::new(&mut rng, key_size) {
         Ok(private_key) => {
@@ -42,7 +42,7 @@ pub async fn generate_key_pair(key_size: usize, client: &Client) -> Result<KeyPa
 
                 match handshake(client, &public_key_string).await {
                     Ok(public_key_lanis) => {
-                        Ok(KeyPair{
+                        Ok(LanisKeyPair{
                             private_key,
                             public_key,
                             private_key_string,
@@ -90,7 +90,7 @@ async fn handshake(client: &Client, public_own_key: &String) -> Result<String, S
                         Ok(data) => {
                             match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data.challenge) {
                                 Ok(challenge) => {
-                                    let result = decrypt_with_key(&challenge, public_own_key).await?;
+                                    let result = decrypt_lanis_with_key(&challenge, public_own_key).await?;
                                     let result_string = String::from_utf8_lossy(&result);
                                     let result_string = result_string.trim();
                                     if result_string == public_own_key.trim() {
@@ -149,14 +149,14 @@ async fn get_public_key(client: &Client) -> Result<RsaPublicKey, String> {
     }
 }
 
-pub (crate) async fn encrypt_data(data: &[u8], public_key: &String) -> Result<String, String> {
+pub(crate) async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> Result<String, String> {
     let salt = random::<[u8; 8]>();
 
     const KEY_SIZE: usize = 256;
     const IV_SIZE: usize = 128;
 
     let mut output = [0; (KEY_SIZE + IV_SIZE) / 8];
-    evpkdf::<Md5>(public_key.as_bytes(), &salt, 1, &mut output);
+    evpkdf::evpkdf::<Md5>(public_key.as_bytes(), &salt, 1, &mut output);
 
     let (key, iv) = output.split_at(KEY_SIZE / 8);
 
@@ -190,15 +190,14 @@ pub (crate) async fn encrypt_data(data: &[u8], public_key: &String) -> Result<St
     Ok(result)
 }
 
-
-pub (crate) async fn decrypt_encoded_tags(html_string: &str, key: &String) -> Result<String, String> {
+pub(crate) async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) -> Result<String, String> {
     let exp = Regex::new(r"<encoded>(.*?)</encoded>").unwrap();
 
     let mut replaced_html = html_string.to_string();
 
     for caps in exp.captures_iter(html_string) {
         if let Some(encoded_content) = caps.get(1) {
-            let decrypted_content = decrypt_string_with_key(encoded_content.as_str(), key).await;
+            let decrypted_content = decrypt_lanis_string_with_key(encoded_content.as_str(), key).await;
             let decrypted_string = decrypted_content.unwrap_or_default();
             replaced_html = replaced_html.replacen(&caps[0], &decrypted_string, 1);
         }
@@ -207,10 +206,10 @@ pub (crate) async fn decrypt_encoded_tags(html_string: &str, key: &String) -> Re
     Ok(replaced_html.to_string())
 }
 
-pub(crate) async fn decrypt_string_with_key(data: &str, public_key: &String) -> Result<String, String> {
+pub(crate) async fn decrypt_lanis_string_with_key(data: &str, public_key: &String) -> Result<String, String> {
     match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data) {
         Ok(data) => {
-            let result = decrypt_with_key(&data, &public_key).await?;
+            let result = decrypt_lanis_with_key(&data, &public_key).await?;
             let result_string = String::from_utf8_lossy(&result);
             let result_string = result_string.trim();
             Ok(result_string.to_string())
@@ -221,7 +220,7 @@ pub(crate) async fn decrypt_string_with_key(data: &str, public_key: &String) -> 
     }
 }
 
-pub(crate) async fn decrypt_with_key(data: &Vec<u8>, public_key: &String) -> Result<Vec<u8>, String> {
+pub(crate) async fn decrypt_lanis_with_key(data: &Vec<u8>, public_key: &String) -> Result<Vec<u8>, String> {
     fn is_salted(encrypted_data: &Vec<u8>) -> bool {
         match std::str::from_utf8(&encrypted_data[0..8]) {
             Ok(s) => s == "Salted__",
@@ -240,7 +239,7 @@ pub(crate) async fn decrypt_with_key(data: &Vec<u8>, public_key: &String) -> Res
 
     let mut output = [0; (KEY_SIZE + IV_SIZE) / 8];
 
-    evpkdf::<Md5>(public_key.as_bytes(), salt, 1, &mut output);
+    evpkdf::evpkdf::<Md5>(public_key.as_bytes(), salt, 1, &mut output);
 
     let (key, iv) = output.split_at(KEY_SIZE / 8);
 
@@ -254,4 +253,35 @@ pub(crate) async fn decrypt_with_key(data: &Vec<u8>, public_key: &String) -> Res
 
     Ok(result)
 
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub enum CryptorError {
+    /// Happens if serde_json fails to convert `T` into a [Vec<u8>]
+    Serialization(String),
+    /// Happens if serde_json fails to convert the decrypted data to `T`
+    Deserialization(String),
+    /// Happens if decryption fails
+    Decryption(String),
+}
+
+pub(crate) async fn encrypt_any<T: Clone + Serialize>(data: &T, key: &[u8; 32]) -> Result<Vec<u8>, CryptorError> {
+    let iv = [0; 16];
+
+    let serialized = serde_json::to_vec(&data).map_err(|e| CryptorError::Serialization(e.to_string()))?;
+
+    let cipher = Aes256CbcEnc::new(&(*key).into(), &iv.into());
+    let result = cipher.encrypt_padded_vec_mut::<Pkcs7>(serialized.as_slice());
+
+    Ok(result)
+}
+
+pub(crate) async fn decrypt_any<T: Clone +  DeserializeOwned>(data: &[u8], key: &[u8; 32]) -> Result<T, CryptorError> {
+    let iv = [0; 16];
+
+    let decryptor = Aes256CbcDec::new(&(*key).into(), &iv.into());
+    let decrypted = decryptor.decrypt_padded_vec_mut::<Pkcs7>(data).map_err(|e| CryptorError::Decryption(e.to_string()))?;
+
+    let result: T = serde_json::from_slice(&decrypted).map_err(|e| CryptorError::Deserialization(e.to_string()))?;
+    Ok(result)
 }

@@ -1,6 +1,5 @@
 use crate::base::account::Account;
 use crate::utils::constants::URL;
-use crate::utils::crypt::{decrypt_encoded_tags, encrypt_data};
 use scraper::{Element, ElementRef, Html, Selector};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -11,6 +10,7 @@ use regex::Regex;
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::multipart::Part;
+use crate::utils::crypt::{decrypt_lanis_encoded_tags, encrypt_lanis_data};
 use crate::utils::datetime::date_time_string_to_datetime;
 
 #[derive(Debug, Clone)]
@@ -150,7 +150,7 @@ impl Lesson {
                     return Err(format!("Failed request with status code: {}", response.status()));
                 }
 
-                let document = decrypt_encoded_tags(response.text().await.unwrap().as_str(), &account.key_pair.public_key_string).await?;
+                let document = decrypt_lanis_encoded_tags(response.text().await.unwrap().as_str(), &account.key_pair.public_key_string).await?;
                 let document = Html::parse_document(&document);
 
                 let mut history: Vec<LessonEntry> = vec![];
@@ -396,7 +396,6 @@ impl Lesson {
                 self.entries = Some(history);
 
                 // Marks
-                // TODO: Test parsing of existing marks
                 let marks_section_selector = Selector::parse("#marks").unwrap();
                 let mut marks_doc = Html::parse_document(&document.select(&marks_section_selector).nth(0).unwrap().html());
 
@@ -888,7 +887,7 @@ impl LessonUpload {
     /// Deletes an already uploaded File (Takes a file id)
     pub async fn delete(&self, file: &i32, account: &Account) -> Result<(), LessonUploadError> {
         let client = &account.client;
-        let encrypted_password = encrypt_data(account.password.as_bytes(), &account.key_pair.public_key_string);
+        let encrypted_password = encrypt_lanis_data(account.secrets.password.as_bytes(), &account.key_pair.public_key_string);
 
         if self.info.is_none() {
             return Err(LessonUploadError::NoInfo);
@@ -940,7 +939,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
         Ok(response) => {
             match response.text().await {
                 Ok(response) => {
-                    let response = decrypt_encoded_tags(&response, &account.key_pair.public_key_string).await?;
+                    let response = decrypt_lanis_encoded_tags(&response, &account.key_pair.public_key_string).await?;
                     let document = Html::parse_document(&response);
                     let lesson_folders_selector = Selector::parse("#mappen").unwrap();
                     let row_selector = Selector::parse(".row").unwrap();

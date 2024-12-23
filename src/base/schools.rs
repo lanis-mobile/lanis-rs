@@ -1,9 +1,9 @@
 use reqwest::Client;
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 use crate::utils::constants::URL;
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct School {
     pub id: i32,
     pub name: String,

@@ -20,8 +20,8 @@ cbc = { version = "0.1.2", features = ["alloc"] }
 evpkdf = "0.2.0"
 regex = "1.11.1"
 markup5ever = "0.12.1"
-futures = "0.3.31"
 chrono = "0.4.38"
+untis = "0.3.0"
 
 [dev-dependencies]
 stopwatch-rs = "0.1.0"
