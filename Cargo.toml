@@ -21,7 +21,7 @@ evpkdf = "0.2.0"
 regex = "1.11.1"
 markup5ever = "0.12.1"
 chrono = "0.4.38"
-untis = "0.3.0"
+untis = { git = "https://github.com/luleyleo/untis-rs.git", rev = "2b3569b48d06dbf78657802f439a62a541c9c617" }
 
 [dev-dependencies]
 stopwatch-rs = "0.1.0"

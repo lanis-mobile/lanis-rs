@@ -4,6 +4,7 @@ use chrono::{DateTime, Days, FixedOffset, NaiveDate, NaiveTime};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use untis::LessonCode;
 use crate::base::account::UntisSecrets;
 use crate::utils::constants::URL;
 use crate::utils::datetime::merge_naive_date_time_to_datetime;
@@ -13,12 +14,20 @@ pub enum Error {
     Network(String),
     Parse(String),
     Html(String),
+    /// Happens if something goes wrong when logging into Untis
+    Credentials(String),
+    /// Happens if anything goes wrong while accessing the Untis API
+    UntisAPI(String),
+    /// Happens if anything goes wrong when processing Dates and/or Times
+    DateTime(String),
+    /// Happens if something goes wrong with Threads (like [tokio::task::spawn_blocking]
+    Threading(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum Provider {
     Lanis(LanisType),
-    Untis,
+    Untis(UntisSecrets),
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
@@ -31,20 +40,31 @@ pub enum LanisType {
 pub struct Week {
     pub week: NaiveDate,
     pub week_type: Option<char>,
-    pub entries: Vec<Entry>,
+    pub entries: Vec<LessonEntry>,
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-pub struct Entry {
+pub struct LessonEntry {
     pub status: LessonEntryStatus,
-    /// The name of the Subject
-    pub name: String,
+    /// The names of the Subjects
+    pub subjects: Vec<String>,
     pub teachers: Vec<String>,
+    /// School hours are **only** available if [Provider::Lanis] is used
     pub school_hours: Vec<i32>,
     pub start: DateTime<FixedOffset>,
     pub end: DateTime<FixedOffset>,
-    /// The room number (e.g. B209)
-    pub room: String,
+    /// The room numbers (e.g. B209)
+    pub rooms: Vec<String>,
+    /// Only available if [Provider::Untis] is used
+    pub lesson_text: Option<String>,
+    /// Only available if [Provider::Untis] is used
+    pub substitution_text: Option<String>,
+}
+
+impl LessonEntry {
+    pub fn new(status: LessonEntryStatus, subjects: Vec<String>, teachers: Vec<String>, school_hours: Vec<i32>, start: DateTime<FixedOffset>, end: DateTime<FixedOffset>, rooms: Vec<String>, lesson_text: Option<String>, substitution_text: Option<String>) -> Self {
+        Self { status, subjects, teachers, school_hours, start, end, rooms, lesson_text, substitution_text }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
@@ -54,14 +74,8 @@ pub enum LessonEntryStatus {
     Cancelled
 }
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
-pub struct Substitution {
-    pub new_teacher: String,
-    pub text: String,
-}
-
 impl Week {
-    pub async fn new(provider: Provider, client: &Client) -> Result<Week, Error> {
+    pub async fn new(provider: Provider, client: &Client, date: NaiveDate) -> Result<Week, Error> {
         return match provider {
             Provider::Lanis(LanisType::All) => {
                 let result = lanis(LanisType::All, client).await?;
@@ -72,9 +86,9 @@ impl Week {
                 Ok(result)
             }
             // TODO: Implement Untis support
-            Provider::Untis => {
-                unimplemented!();
-                // Ok(untis(&client).await?)
+            Provider::Untis(secrets) => {
+                let result = untis(secrets, date).await?;
+                Ok(result)
             }
         };
 
@@ -101,7 +115,7 @@ impl Week {
 
                 let date_selector = Selector::parse("div.col-md-6>span").unwrap();
                 let date = document.select(&date_selector).nth(0).unwrap().text().collect::<String>().replace("\n", "").replace(" ", "").replace("Stundenplangültig", "").replace("ab", "").trim().to_string();
-                let date = NaiveDate::parse_from_str(&date, "%d.%m.%Y").map_err(|_| Error::Parse(format!("Failed to parse date string '{}' as Date", date)))?;
+                let date = NaiveDate::parse_from_str(&date, "%d.%m.%Y").map_err(|_| Error::DateTime(format!("Failed to parse date string '{}' as Date", date)))?;
                 *week = date;
 
                 let lesson_selector = Selector::parse("div.stunde ").unwrap();
@@ -121,7 +135,7 @@ impl Week {
                     let mut time_string = time_string.split("-");
 
                     async fn get_time(time_string: &mut String) -> Result<NaiveTime, Error> {
-                        NaiveTime::parse_from_str(&format!("{}:00", time_string), "%H:%M:%S").map_err(|_| Error::Parse(format!("Failed to parse time string '{}' as NaiveTime", time_string)))
+                        NaiveTime::parse_from_str(&format!("{}:00", time_string), "%H:%M:%S").map_err(|_| Error::DateTime(format!("Failed to parse time string '{}' as NaiveTime", time_string)))
                     }
 
                     let start_time = get_time(&mut time_string.nth(0).unwrap().to_string()).await?;
@@ -170,11 +184,11 @@ impl Week {
                         let hours = attr.unwrap().parse::<i32>().map_err(|_| Error::Parse("failed to parse rowspan as i32".to_string()))?;
 
                         for lesson in column.select(&lesson_selector) {
-                            let name = lesson.text().nth(1).unwrap().replace("\n","").trim().to_string();
-                            let room = lesson.text().nth(2).unwrap().replace("\n","").trim().to_string();
+                            let subjects = vec![lesson.text().nth(1).unwrap().replace("\n","").trim().to_string()];
+                            let rooms = vec![lesson.text().nth(2).unwrap().replace("\n","").trim().to_string()];
                             let mut teachers = Vec::new();
                             for teacher in lesson.text().nth(3).unwrap().split("\n") {
-                                if !teacher.trim().is_empty() { teachers.push(teacher.to_string()); }
+                                if !teacher.trim().is_empty() { teachers.push(teacher.to_string().trim().to_string()); }
                             }
                             let school_hours = {
                                 if hours >= 2 {
@@ -192,20 +206,22 @@ impl Week {
 
                             let start = merge_naive_date_time_to_datetime(&date.checked_add_days(
                                 Days::new((day - 1) as u64)).unwrap(), &hour_times.get(&(school_hours.first().unwrap().clone() as usize)).unwrap()[0])
-                                .await.map_err(|e| Error::Parse(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
+                                .map_err(|e| Error::DateTime(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
 
                             let end =  merge_naive_date_time_to_datetime(&date.checked_add_days(
                                 Days::new((day - 1) as u64)).unwrap(), &hour_times.get(&(school_hours.last().unwrap().clone() as usize)).unwrap()[1])
-                                .await.map_err(|e| Error::Parse(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
+                                .map_err(|e| Error::DateTime(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
 
-                            entries.push(Entry{
+                            entries.push(LessonEntry {
                                 status: LessonEntryStatus::Normal,
-                                name,
+                                subjects,
                                 teachers,
                                 school_hours,
                                 start,
                                 end,
-                                room,
+                                rooms,
+                                lesson_text: None,
+                                substitution_text: None
                             });
                         }
                     }
@@ -276,8 +292,42 @@ impl Week {
             Ok(result)
         }
 
-        async fn untis(untis_secrets: &UntisSecrets) -> Result<Week, Error> {
-            unimplemented!()
+        async fn untis(untis_secrets: UntisSecrets, week: NaiveDate) -> Result<Week, Error> {
+            let school = tokio::task::spawn_blocking(move || {
+                untis::schools::get_by_name(untis_secrets.school_name.as_str()).map_err(|e| Error::Credentials(format!("failed to get school: \"{}\"", e)))
+            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: \"{}\"", e)))??;
+
+            let mut client = tokio::task::spawn_blocking(move || {
+                school.client_login(&untis_secrets.username, &untis_secrets.password).map_err(|e| Error::Credentials(format!("failed to login: \"{}\"", e)))
+            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: \"{}\"", e)))??;
+
+            let timetable = tokio::task::spawn_blocking(move || {
+                client.own_timetable_for_week(&week.into()).map_err(|e| Error::UntisAPI(format!("failed to get timetable: \"{}\"", e)))
+            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: \"{}\"", e)))??;
+
+            let mut entries = Vec::new();
+
+            for lesson in timetable {
+                let status = match lesson.code {
+                    LessonCode::Regular => LessonEntryStatus::Normal,
+                    LessonCode::Irregular => LessonEntryStatus::Abnormal,
+                    LessonCode::Cancelled => LessonEntryStatus::Cancelled,
+                };
+
+                let subjects = lesson.subjects.iter().map(|id| id.name.clone()).collect::<Vec<_>>();
+                let teachers = lesson.teachers.iter().map(|id| id.name.clone()).collect::<Vec<_>>();
+                let school_hours = Vec::new();
+                let date = lesson.date.to_chrono();
+                let start = merge_naive_date_time_to_datetime(&date, &lesson.start_time).map_err(|e| Error::DateTime(format!("Failed to convert start time of lesson: {:?}", e)))?;
+                let end = merge_naive_date_time_to_datetime(&date, &lesson.end_time).map_err(|e| Error::DateTime(format!("Failed to convert end time of lesson: {:?}", e)))?;
+                let rooms = lesson.rooms.iter().map(|id| id.name.clone()).collect::<Vec<_>>();
+                let lesson_text = if lesson.lstext.is_empty() { None } else { Some(lesson.lstext) };
+                let substitution_text = lesson.subst_text;
+
+                entries.push(LessonEntry::new(status, subjects, teachers, school_hours, start, end, rooms, lesson_text, substitution_text ));
+            }
+
+            Ok(Week { week, week_type: None, entries })
         }
     }
 }

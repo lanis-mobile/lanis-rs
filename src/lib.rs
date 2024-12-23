@@ -16,9 +16,9 @@ mod tests {
 
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::{get_lessons};
-    use crate::base::account::{Account, AccountSecrets};
+    use crate::base::account::{Account, AccountSecrets, UntisSecrets};
     use crate::modules::timetable;
-    use crate::modules::timetable::Week;
+    use crate::modules::timetable::{Provider, Week};
 
     use std::{env, fs};
     use std::path::Path;
@@ -123,19 +123,39 @@ mod tests {
 
     #[tokio::test]
     async fn test_timetable() {
-        let account = create_account().await;
+        let mut account = create_account().await;
 
+        // Lanis (All)
         let mut stopwatch = StopWatch::start();
-        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::All), &account.client).await.unwrap();
+        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::All), &account.client, chrono::Local::now().date_naive()).await.unwrap();
         let ms = stopwatch.split().split.as_millis();
-        println!("All: {:?}", time_table_week);
+        println!("Lanis All: {:?}", time_table_week);
         println!("Week::new() took {}ms", ms);
         println!();
+
+        // Lanis (Own)
         let mut stopwatch = StopWatch::start();
-        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::Own), &account.client).await.unwrap();
+        let time_table_week = Week::new(timetable::Provider::Lanis(timetable::LanisType::Own), &account.client, chrono::Local::now().date_naive()).await.unwrap();
         let ms = stopwatch.split().split.as_millis();
-        println!("Own: {:?}", time_table_week);
+        println!("Lanis Own: {:?}", time_table_week);
         println!("Week::new() took {}ms", ms);
+        println!();
+
+        // Untis
+        if env::var("UNTIS_TEST_TIMETABLE").unwrap_or("FALSE".to_string()).eq("TRUE") {
+            let mut stopwatch = StopWatch::start();
+            let school_name = env::var("UNTIS_SCHOOL_NAME").expect("Couldn't find 'UNTIS_SCHOOL_NAME' in env! Did you set it?");
+            let username = env::var("UNTIS_USERNAME").expect("Couldn't find 'UNTIS_USERNAME' in env! Did you set it?");
+            let password = env::var("UNTIS_PASSWORD").expect("Couldn't find 'UNTIS_PASSWORD' in env! Did you set it?");
+
+            let secrets = UntisSecrets::new(school_name, username, password);
+            account.secrets.untis_secrets = Some(secrets);
+
+            let time_table_week = Week::new(Provider::Untis(account.secrets.untis_secrets.as_ref().unwrap().clone()), &account.client, chrono::Local::now().date_naive() - chrono::Duration::weeks(1)).await.unwrap();
+            let ms = stopwatch.split().split.as_millis();
+            println!("Untis: {:?}", time_table_week);
+            println!("Week::new() took {}ms", ms);
+        }
 
         println!()
     }

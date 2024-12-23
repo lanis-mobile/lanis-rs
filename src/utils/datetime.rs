@@ -13,7 +13,7 @@ pub(crate) async fn date_time_string_to_datetime(date: &String, time: &String) -
 }
 
 /// Merges a [NaiveDate] with a [NaiveTime] to a [DateTime] (CEST)
-pub(crate) async fn merge_naive_date_time_to_datetime(date: &NaiveDate, time: &NaiveTime) -> Result<DateTime<FixedOffset>, DateTimeError> {
+pub(crate) fn merge_naive_date_time_to_datetime(date: &NaiveDate, time: &NaiveTime) -> Result<DateTime<FixedOffset>, DateTimeError> {
     let date_time = DateTime::parse_from_str(&format!("{} {} +02:00", date, time), "%Y-%m-%d %H:%M:%S %z").map_err(|e| DateTimeError::DateInvalid(e.to_string()))?;
     Ok(date_time)
 }
