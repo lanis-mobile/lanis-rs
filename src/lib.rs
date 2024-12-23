@@ -8,6 +8,7 @@ pub mod modules;
 pub enum Feature {
     LanisTimetable,
     MeinUnttericht,
+    FileStorage,
 }
 
 #[cfg(test)]

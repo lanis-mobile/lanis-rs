@@ -239,6 +239,7 @@ impl Account {
                     match entry.link.as_str() {
                         "meinunterricht.php" => features.push(Feature::MeinUnttericht),
                         "stundenplan.php" => features.push(Feature::LanisTimetable),
+                        "dateispeicher.php" => features.push(Feature::FileStorage),
                         _ => continue,
                     }
                 }
