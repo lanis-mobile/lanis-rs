@@ -226,8 +226,9 @@ impl Account {
 
                 let mut features = Vec::new();
 
+                // TODO: Fix feature parsing
                 for entry in entries.entrys {
-                    match entry.link.as_str() {
+                    match entry.link.trim() {
                         "meinunterricht.php" => features.push(Feature::MeinUnttericht),
                         "stundenplan.php" => features.push(Feature::LanisTimetable),
                         "dateispeicher.php" => features.push(Feature::FileStorage),
@@ -242,11 +243,11 @@ impl Account {
         }
     }
 
-    pub async fn is_supported(&self, feature: Feature) -> Result<bool, AccountError> {
+    pub fn is_supported(&self, feature: Feature) -> bool {
         if self.features.contains(&feature) {
-            Ok(true)
+            true
         } else {
-            Ok(false)
+            false
         }
     }
 }

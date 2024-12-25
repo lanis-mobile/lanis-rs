@@ -114,8 +114,6 @@ mod tests {
         println!("account.prevent_logout() took {}ms", stopwatch.split().split.as_millis());
         println!();
 
-        let _ = account.is_supported(Feature::MeinUnttericht).await.unwrap();
-
         println!("Private Key:\n{}", account.key_pair.private_key_string);
         println!("Public Key:\n{}", account.key_pair.public_key_string);
 
@@ -128,21 +126,25 @@ mod tests {
     async fn test_timetable() {
         let mut account = create_account().await;
 
-        // Lanis (All)
-        let mut stopwatch = StopWatch::start();
-        let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::All), &account.client, chrono::Local::now().date_naive()).await.unwrap();
-        let ms = stopwatch.split().split.as_millis();
-        println!("Lanis All: {:?}", time_table_week);
-        println!("Week::new() took {}ms", ms);
-        println!();
+        if account.is_supported(Feature::LanisTimetable) {
+            // Lanis (All)
+            let mut stopwatch = StopWatch::start();
+            let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::All), &account.client, chrono::Local::now().date_naive()).await.unwrap();
+            let ms = stopwatch.split().split.as_millis();
+            println!("Lanis All: {:?}", time_table_week);
+            println!("Week::new() took {}ms", ms);
+            println!();
 
-        // Lanis (Own)
-        let mut stopwatch = StopWatch::start();
-        let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::Own), &account.client, chrono::Local::now().date_naive()).await.unwrap();
-        let ms = stopwatch.split().split.as_millis();
-        println!("Lanis Own: {:?}", time_table_week);
-        println!("Week::new() took {}ms", ms);
-        println!();
+            // Lanis (Own)
+            let mut stopwatch = StopWatch::start();
+            let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::Own), &account.client, chrono::Local::now().date_naive()).await.unwrap();
+            let ms = stopwatch.split().split.as_millis();
+            println!("Lanis Own: {:?}", time_table_week);
+            println!("Week::new() took {}ms", ms);
+            println!();
+        } else {
+            println!("LanisTimetable is not supported by this account! Skipping.");
+        }
 
         // Untis
         if env::var("UNTIS_TEST_TIMETABLE").unwrap_or("FALSE".to_string()).eq("TRUE") {
@@ -167,102 +169,111 @@ mod tests {
     async fn test_lessons() {
         let account = create_account().await;
 
-        let mut stopwatch = StopWatch::start();
-        let mut lessons = get_lessons(&account).await.unwrap();
-        println!("get_lessons() took {}ms", stopwatch.split().split.as_millis());
-
-        let mut stopwatch = StopWatch::start();
-        for lesson in lessons.lessons.iter_mut() {
-            println!("\tid: {}", lesson.id);
-            println!("\turl: {}", lesson.url);
-            println!("\tname: {}", lesson.name);
-            println!("\tteacher: {}", lesson.teacher);
-            println!("\tteacher_short: {:?}", lesson.teacher_short);
-            println!("\tattendances: {:?}", lesson.attendances);
-            println!("\tentry_latest: {:?}", lesson.entry_latest);
+        if account.is_supported(Feature::MeinUnttericht) {
             let mut stopwatch = StopWatch::start();
-            lesson.set_data(&account).await.unwrap();
-            println!("\tlesson.set_data() took {}ms", stopwatch.split().split.as_millis());
-            println!("\tmarks: {:?}", lesson.marks);
-            println!("\tentries:");
+            let mut lessons = get_lessons(&account).await.unwrap();
+            println!("get_lessons() took {}ms", stopwatch.split().split.as_millis());
+
             let mut stopwatch = StopWatch::start();
-            for mut entry in lesson.entries.clone().unwrap() {
-                println!("\t\t{:?}", entry);
-                if entry.homework.is_some() {
-                    let mut homework = entry.homework.clone().unwrap();
-                    let mut new_homework = !homework.completed;
+            for lesson in lessons.lessons.iter_mut() {
+                println!("\tid: {}", lesson.id);
+                println!("\turl: {}", lesson.url);
+                println!("\tname: {}", lesson.name);
+                println!("\tteacher: {}", lesson.teacher);
+                println!("\tteacher_short: {:?}", lesson.teacher_short);
+                println!("\tattendances: {:?}", lesson.attendances);
+                println!("\tentry_latest: {:?}", lesson.entry_latest);
+                let mut stopwatch = StopWatch::start();
+                lesson.set_data(&account).await.unwrap();
+                println!("\tlesson.set_data() took {}ms", stopwatch.split().split.as_millis());
+                println!("\tmarks: {:?}", lesson.marks);
+                println!("\tentries:");
+                let mut stopwatch = StopWatch::start();
+                for mut entry in lesson.entries.clone().unwrap() {
+                    println!("\t\t{:?}", entry);
+                    if entry.homework.is_some() {
+                        let mut homework = entry.homework.clone().unwrap();
+                        let mut new_homework = !homework.completed;
 
-                    let mut stopwatch = StopWatch::start();
-                    homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
-                    println!("\t\t\tHomework was changed from {} to {} and took {}ms", !homework.completed, new_homework, stopwatch.split().split.as_millis());
-                    entry.homework = Some(homework.to_owned());
-                    println!("\t\t\tHomework after change: {:?}", entry.homework);
-
-                    new_homework = !new_homework;
-
-                    let mut stopwatch = StopWatch::start();
-                    homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
-                    println!("\t\t\tHomework was changed from {} to {} and took {}", !homework.completed, new_homework, stopwatch.split().split.as_millis());
-                    entry.homework = Some(homework);
-                    println!("\t\t\tHomework after change: {:?}", entry.homework);
-                }
-                if entry.uploads.is_some() {
-                    let mut uploads = entry.uploads.clone().unwrap();
-                    for upload in &mut uploads {
                         let mut stopwatch = StopWatch::start();
-                        upload.info = Some(upload.get_info(&account.client).await.unwrap());
-                        println!("\t\t\tupload.get_info() took {}ms", stopwatch.split().split.as_millis());
-                        println!("\t\t\tUpload: {:?}", upload);
-                        if upload.state {
-                            let mut stopwatch = StopWatch::start();
-                            let path = env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e)});
-                            let path = Path::new(&path);
-                            let status = upload.upload(vec![path], &account.client).await.unwrap();
-                            let ms = stopwatch.split().split.as_millis();
-                            println!("\t\t\tUploaded test file: {}", upload.url);
-                            println!("\t\t\t\tUrl: {}", upload.url);
-                            println!("\t\t\t\tStatus: {:?}", status);
-                            println!("\t\t\tupload.upload() took {}ms", ms);
+                        homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
+                        println!("\t\t\tHomework was changed from {} to {} and took {}ms", !homework.completed, new_homework, stopwatch.split().split.as_millis());
+                        entry.homework = Some(homework.to_owned());
+                        println!("\t\t\tHomework after change: {:?}", entry.homework);
 
-                            let i = {
-                                upload.info = Some(upload.get_info(&account.client).await.unwrap());
-                                let own_files = upload.info.clone().unwrap().own_files;
-                                let mut i = -1;
-                                for file in own_files {
-                                    if file.name == status.get(0).unwrap().name {
-                                        i = file.index;
+                        new_homework = !new_homework;
+
+                        let mut stopwatch = StopWatch::start();
+                        homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
+                        println!("\t\t\tHomework was changed from {} to {} and took {}", !homework.completed, new_homework, stopwatch.split().split.as_millis());
+                        entry.homework = Some(homework);
+                        println!("\t\t\tHomework after change: {:?}", entry.homework);
+                    }
+                    if entry.uploads.is_some() {
+                        let mut uploads = entry.uploads.clone().unwrap();
+                        for upload in &mut uploads {
+                            let mut stopwatch = StopWatch::start();
+                            upload.info = Some(upload.get_info(&account.client).await.unwrap());
+                            println!("\t\t\tupload.get_info() took {}ms", stopwatch.split().split.as_millis());
+                            println!("\t\t\tUpload: {:?}", upload);
+                            if upload.state {
+                                let mut stopwatch = StopWatch::start();
+                                let path = env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e)});
+                                let path = Path::new(&path);
+                                let status = upload.upload(vec![path], &account.client).await.unwrap();
+                                let ms = stopwatch.split().split.as_millis();
+                                println!("\t\t\tUploaded test file: {}", upload.url);
+                                println!("\t\t\t\tUrl: {}", upload.url);
+                                println!("\t\t\t\tStatus: {:?}", status);
+                                println!("\t\t\tupload.upload() took {}ms", ms);
+
+                                let i = {
+                                    upload.info = Some(upload.get_info(&account.client).await.unwrap());
+                                    let own_files = upload.info.clone().unwrap().own_files;
+                                    let mut i = -1;
+                                    for file in own_files {
+                                        if file.name == status.get(0).unwrap().name {
+                                            i = file.index;
+                                        }
                                     }
+
+                                    i
+                                };
+
+                                // Delete uploaded file
+                                let mut stopwatch = StopWatch::start();
+                                if i != -1 {
+                                    upload.delete(&i, &account).await.unwrap();
                                 }
-
-                                i
-                            };
-
-                            // Delete uploaded file
-                            let mut stopwatch = StopWatch::start();
-                            if i != -1 {
-                                upload.delete(&i, &account).await.unwrap();
+                                println!("\t\t\tupload.delete() took {}ms", stopwatch.split().split.as_millis());
                             }
-                            println!("\t\t\tupload.delete() took {}ms", stopwatch.split().split.as_millis());
                         }
                     }
                 }
-            }
-            println!("\tIteration of all entries took {}ms", stopwatch.split().split.as_millis());
-            println!("\texams:");
-            for exam in lesson.exams.clone().unwrap() {
-                println!("\t\t{:?}", exam)
-            }
+                println!("\tIteration of all entries took {}ms", stopwatch.split().split.as_millis());
+                println!("\texams:");
+                for exam in lesson.exams.clone().unwrap() {
+                    println!("\t\t{:?}", exam)
+                }
 
-            println!(" ");
+                println!(" ");
+            }
+            println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
+
+            println!()
+        } else {
+            println!("Lessons are not supported by this account! Skipping.");
         }
-        println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
-
-        println!()
     }
 
     #[tokio::test]
     async fn test_file_storage() {
         let account = create_account().await;
+
+        if !account.is_supported(Feature::FileStorage) {
+            println!("File Storage is not supported by this account! Skipping.");
+            return;
+        }
 
         print!("Getting root page... ");
         let mut stopwatch = StopWatch::start();
