@@ -12,11 +12,13 @@ use crate::base::schools::{get_school, get_schools, School};
 use crate::Feature;
 use crate::utils::constants::URL;
 use crate::utils::crypt::{decrypt_any, encrypt_any, generate_lanis_key_pair, CryptorError, LanisKeyPair};
+
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum AccountType {
     Student,
     Teacher,
     Parent,
+    Unknown,
 }
 
 /// Stores everything that is needed at Runtime and related to the Account
@@ -24,9 +26,9 @@ pub enum AccountType {
 pub struct Account {
     pub school: School,
     pub secrets: AccountSecrets,
-    pub account_type: Option<AccountType>,
-    pub features: Option<Vec<Feature>>,
-    pub data: Option<BTreeMap<String, String>>,
+    pub account_type: AccountType,
+    pub features: Vec<Feature>,
+    pub data: BTreeMap<String, String>,
     /// You can generate a new KeyPair by using the Ok result of [generate_lanis_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
     pub key_pair: LanisKeyPair,
     pub client: Client,
@@ -41,10 +43,6 @@ pub enum AccountError {
     Login(String),
     /// Happens if no school with the provided id is found
     NoSchool(String),
-    /// Happens if the "feature" field in [Account] is None
-    FeaturesInit,
-    /// Happens if the "data" field in [Account] is None
-    DataInit,
     /// Happens if key_pair generation fails
     KeyPair,
     /// Happens if anything goes wrong with parsing <br>
@@ -79,18 +77,18 @@ impl Account {
         let mut account = Account {
             school,
             secrets,
-            account_type: None,
-            data: None,
-            features: None,
+            account_type: AccountType::Unknown,
+            data: BTreeMap::new(),
+            features: Vec::new(),
             key_pair: key_pair.unwrap(),
             client,
             cookie_store,
         };
 
         account.create_session().await?;
-        account.data = Some(account.fetch_account_data().await?);
-        account.account_type = Some(account.get_type().await?);
-        account.features = Some(account.get_features().await?);
+        account.data = account.fetch_account_data().await?;
+        account.account_type = account.get_type().await;
+        account.features = account.get_features().await?;
 
         Ok(account)
     }
@@ -198,22 +196,15 @@ impl Account {
         }
     }
 
-    pub async fn get_type(&self) -> Result<AccountType, AccountError> {
-        match &self.data {
-            None => {
-                Err(AccountError::DataInit)
-            }
-            Some(account_data) => {
-                if account_data.contains_key("klasse") {
-                    Ok(Student)
-                } else {
-                    Ok(Teacher)
-                }
-            }
+    pub async fn get_type(&self) -> AccountType {
+        if self.data.contains_key("klasse") {
+            Student
+        } else {
+            Teacher
         }
     }
 
-    /// Returns a vector of features
+    /// Returns a vector of supported features (for the [Account])
     pub async fn get_features(&self) -> Result<Vec<Feature>, AccountError> {
 
         #[derive(Debug, Deserialize)]
@@ -240,6 +231,7 @@ impl Account {
                         "meinunterricht.php" => features.push(Feature::MeinUnttericht),
                         "stundenplan.php" => features.push(Feature::LanisTimetable),
                         "dateispeicher.php" => features.push(Feature::FileStorage),
+                        "nachrichten.php" => features.push(Feature::MessagesBeta),
                         _ => continue,
                     }
                 }
@@ -251,15 +243,10 @@ impl Account {
     }
 
     pub async fn is_supported(&self, feature: Feature) -> Result<bool, AccountError> {
-        match &self.features {
-            Some(features) => {
-                if features.contains(&feature) {
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }
-            }
-            None => Err(AccountError::FeaturesInit)
+        if self.features.contains(&feature) {
+            Ok(true)
+        } else {
+            Ok(false)
         }
     }
 }
