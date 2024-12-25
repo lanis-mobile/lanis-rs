@@ -26,6 +26,7 @@ mod tests {
     use std::path::Path;
     use stopwatch_rs::StopWatch;
     use crate::modules::file_storage::FileStoragePage;
+    use crate::modules::messages::ConversationOverview;
     use crate::utils::crypt::{decrypt_any, encrypt_any};
 
     #[tokio::test]
@@ -162,7 +163,7 @@ mod tests {
             println!("Week::new() took {}ms", ms);
         }
 
-        println!()
+        println!();
     }
 
     #[tokio::test]
