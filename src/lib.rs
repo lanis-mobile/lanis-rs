@@ -24,6 +24,7 @@ mod tests {
     use std::{env, fs};
     use std::path::Path;
     use stopwatch_rs::StopWatch;
+    use crate::modules::file_storage::FileStoragePage;
     use crate::utils::crypt::{decrypt_any, encrypt_any};
 
     #[tokio::test]
@@ -256,5 +257,41 @@ mod tests {
         println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
 
         println!()
+    }
+
+    #[tokio::test]
+    async fn test_file_storage() {
+        let account = create_account().await;
+
+        let root_page = FileStoragePage::get_root(&account.client).await.unwrap();
+        println!("Root page:\n{:#?}", root_page);
+        println!();
+
+        if let Some(node) = root_page.folder_nodes.get(0) {
+            let first_page = FileStoragePage::get(node.id, &account.client).await.unwrap();
+            println!("First page:\n{:#?}", first_page);
+            println!();
+
+            if let Some(node) = first_page.file_nodes.get(0) {
+                let path = format!("/tmp/{}", node.name);
+                print!("Downloading first file node to '{}'... ", path);
+                let mut stopwatch = StopWatch::start();
+
+                node.download(&path, &account.client).await.unwrap();
+
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+
+                print!("Deleting '{}'... ", path);
+                let mut stopwatch = StopWatch::start();
+
+                tokio::fs::remove_file(path).await.unwrap();
+
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+            }
+        }
+
+        println!();
     }
 }

@@ -1,6 +1,7 @@
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub(crate) enum DateTimeError {
     DateInvalid(String),
     TimeInvalid(String),
