@@ -226,7 +226,6 @@ impl Account {
 
                 let mut features = Vec::new();
 
-                // TODO: Fix feature parsing
                 for entry in entries.entrys {
                     match entry.link.trim() {
                         "meinunterricht.php" => features.push(Feature::MeinUnttericht),
@@ -237,7 +236,7 @@ impl Account {
                     }
                 }
 
-                Ok(vec![Feature::MeinUnttericht])
+                Ok(features)
             }
             Err(e) => Err(AccountError::Network(e.to_string()))
         }
