@@ -17,5 +17,5 @@ impl URL {
     pub const MEIN_UNTERRICHT: &'static str = "https://start.schulportal.hessen.de/meinunterricht.php";
     pub const TIMETABLE: &'static str = "https://start.schulportal.hessen.de/stundenplan.php";
     pub const DATA_STORAGE: &'static str = "https://start.schulportal.hessen.de/dateispeicher.php";
-
+    pub const MESSAGES: &'static str = "https://start.schulportal.hessen.de/nachrichten.php";
 }
