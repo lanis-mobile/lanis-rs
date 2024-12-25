@@ -263,12 +263,20 @@ mod tests {
     async fn test_file_storage() {
         let account = create_account().await;
 
+        print!("Getting root page... ");
+        let mut stopwatch = StopWatch::start();
         let root_page = FileStoragePage::get_root(&account.client).await.unwrap();
+        let ms = stopwatch.split().split.as_millis();
+        println!("Took {} ms", ms);
         println!("Root page:\n{:#?}", root_page);
         println!();
 
         if let Some(node) = root_page.folder_nodes.get(0) {
+            print!("Getting folder node page... ");
+            let mut stopwatch = StopWatch::start();
             let first_page = FileStoragePage::get(node.id, &account.client).await.unwrap();
+            let ms = stopwatch.split().split.as_millis();
+            println!("Took {} ms", ms);
             println!("First page:\n{:#?}", first_page);
             println!();
 
