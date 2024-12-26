@@ -315,4 +315,18 @@ mod tests {
 
         println!();
     }
+
+    #[tokio::test]
+    async fn test_messages() {
+        let account = create_account().await;
+
+        print!("Getting root page of conversations... ");
+        let mut stopwatch = StopWatch::start();
+        let overviews = ConversationOverview::get_root(&account.client, &account.key_pair).await.unwrap();
+        let ms = stopwatch.split().split.as_millis();
+        println!("Took {}ms", ms);
+        println!("Conversation overviews: {:#?}", overviews);
+
+        println!()
+    }
 }
