@@ -327,6 +327,48 @@ mod tests {
         println!("Took {}ms", ms);
         println!("Conversation overviews: {:#?}", overviews);
 
+        for mut overview in overviews {
+            println!("Current overview: {}", overview.subject);
+            if overview.visible {
+                println!("\tBefore: {}", overview.visible);
+                print!("\tHiding conversation overview... ");
+                let mut stopwatch = StopWatch::start();
+                let result =  overview.hide(&account.client).await.unwrap();
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+                println!("\tResult: {}", result);
+
+                println!("\tNow: {}", overview.visible);
+
+                print!("\tShowing conversation overview... ");
+                let mut stopwatch = StopWatch::start();
+                let result =  overview.show(&account.client).await.unwrap();
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+                println!("\tResult: {}", result);
+                println!("\tAfter: {}", overview.visible);
+            } else {
+                println!("\tBefore: {}", overview.visible);
+                print!("\tShowing conversation overview... ");
+                let mut stopwatch = StopWatch::start();
+                let result =  overview.show(&account.client).await.unwrap();
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+                println!("\tResult: {}", result);
+
+                println!("\tNow: {}", overview.visible);
+
+                print!("\tHiding conversation overview... ");
+                let mut stopwatch = StopWatch::start();
+                let result =  overview.hide(&account.client).await.unwrap();
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+                println!("\tResult: {}", result);
+                println!("\tAfter: {}", overview.visible);
+            }
+            println!()
+        }
+
         println!()
     }
 }

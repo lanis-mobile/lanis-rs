@@ -1,6 +1,6 @@
 use chrono::{DateTime, FixedOffset};
 use markup5ever::interface::TreeSink;
-use reqwest::Client;
+use reqwest::{Client, Response};
 use reqwest::header::HeaderValue;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
@@ -61,8 +61,9 @@ impl ConversationOverview {
                     pub empf: Vec<String>,
                     pub weitere_empfaenger: String,
                     pub datum_unix: i64,
+                    /// If all conversations are hidden then this is missing for some reason
                     #[serde(rename = "unread")]
-                    pub unread: i32,
+                    pub unread: Option<i32>,
                 }
 
                 impl From<ConversationRowJson> for Result<ConversationOverview, ConversationError> {
@@ -96,7 +97,7 @@ impl ConversationOverview {
                         let subject = json_row.betreff.to_owned();
                         let date_time_utc = DateTime::from_timestamp(json_row.datum_unix.to_owned(), 0).unwrap_or(DateTime::UNIX_EPOCH);
                         let date_time = date_time_utc.fixed_offset();
-                        let read = match json_row.unread { 0 => true, 1 => false, _ => return Err(ConversationError::Parsing(String::from("failed to parse unread as bool (read) 'unexpected i32'"))) };
+                        let read = match json_row.unread.unwrap_or(0) { 0 => true, 1 => false, _ => return Err(ConversationError::Parsing(String::from("failed to parse unread as bool (read) 'unexpected i32'"))) };
                         let visible = match json_row.papierkorb.as_str() { "ja" => false, "nein" => true, _ => return Err(ConversationError::Parsing(String::from("failed to parse visible as bool 'unexpected &str'"))) };
 
                         Ok(ConversationOverview {
@@ -114,6 +115,7 @@ impl ConversationOverview {
                     }
                 }
 
+                println!("JSON: {}", dec_rows_json);
                 let json_rows = serde_json::from_str::<Vec<ConversationRowJson>>(&dec_rows_json).map_err(|e| ConversationError::Parsing(format!("failed to parse rows of decrypted json '{}'", e)))?;
                 let overviews = {
                     let mut result: Vec<ConversationOverview> = Vec::new();
@@ -126,6 +128,33 @@ impl ConversationOverview {
                 Ok(overviews)
             }
             Err(error) => Err(ConversationError::Network(format!("failed to get conversations  '{}'", error)))
+        }
+    }
+
+    async fn parse_recycle_response(&mut self, response: Response) -> Result<bool, ConversationError> {
+        let response_bool = !response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to get text of response '{}'", e)))?.parse::<bool>().map_err(|e| ConversationError::Parsing(format!("failed to parse response as bool '{}'", e)))?;
+        let result = response_bool != self.visible;
+        self.visible = response_bool;
+        Ok(result)
+    }
+
+    /// Hides a visible conversation and returns the result if the hiding succeeded
+    pub async fn hide(&mut self, client: &Client) -> Result<bool, ConversationError> {
+        match client.post(URL::MESSAGES).form(&[("a", "deleteAll"), ("uniqid", self.uid.as_str())]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
+            Ok(response) => {
+                self.parse_recycle_response(response).await
+            },
+            Err(e) => Err(ConversationError::Network(format!("failed to hide conversation '{}'", e)))
+        }
+    }
+
+    /// Shows a hidden conversation and returns the result if the hiding succeeded
+    pub async fn show(&mut self, client: &Client) -> Result<bool, ConversationError> {
+        match client.post(URL::MESSAGES).form(&[("a", "recycleMsg"), ("uniqid", self.uid.as_str())]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
+            Ok(response) => {
+                self.parse_recycle_response(response).await
+            },
+            Err(e) => Err(ConversationError::Network(format!("failed to show conversation '{}'", e)))
         }
     }
 }
