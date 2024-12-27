@@ -366,7 +366,9 @@ mod tests {
                 println!("\tResult: {}", result);
                 println!("\tAfter: {}", overview.visible);
             }
-            println!()
+            println!();
+
+            overview.get(&account.client, &account.key_pair).await.unwrap()
         }
 
         println!()

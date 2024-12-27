@@ -4,8 +4,9 @@ use reqwest::{Client, Response};
 use reqwest::header::HeaderValue;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use crate::base::account::AccountType;
 use crate::utils::constants::URL;
-use crate::utils::crypt::{decrypt_lanis_string_with_key, LanisKeyPair};
+use crate::utils::crypt::{decrypt_lanis_string_with_key, encrypt_lanis_data, LanisKeyPair};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum ConversationError {
@@ -157,4 +158,131 @@ impl ConversationOverview {
             Err(e) => Err(ConversationError::Network(format!("failed to show conversation '{}'", e)))
         }
     }
+
+
+    /// Get the full [Conversation]
+    pub async fn get(&self, client: &Client, keys: &LanisKeyPair) -> Result<(), ConversationError> {
+        let enc_uid = encrypt_lanis_data(self.uid.as_bytes(), &keys.public_key_string);
+
+        let query = [("a", "read"), ("msg", self.uid.as_str())];
+        let enc_uid = enc_uid.await.map_err(|e| ConversationError::Crypto(format!("failed to encrypt uid '{}'", e)))?;
+        let form = [("a", "read"), ("uniqid", enc_uid.as_str())];
+        match client.post(URL::MESSAGES).query(&query).form(&form).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
+            Ok(response) => {
+                #[derive(Serialize, Deserialize, Debug)]
+                struct EncJsonConversation {
+                    /// actually an [i32]
+                    error: String,
+                    message: String,
+                    time: i64,
+                    /// actually an [i32]
+                    #[serde(rename = "userId")]
+                    user_id: String,
+                    #[serde(rename = "ToolOptions")]
+                    tool_options: JsonConversationToolOptions,
+                    #[serde(rename = "UserTyp")]
+                    user_typ: String,
+                }
+
+                #[derive(Serialize, Deserialize, Debug)]
+                struct JsonConversation {
+                    error: i32,
+                    message: JsonConversationMessage,
+                    time: i64,
+                    user_id: i32,
+                    tool_options: JsonConversationToolOptions,
+                    user_typ: String,
+                }
+
+                #[derive(Serialize, Deserialize, Debug)]
+                struct JsonConversationMessage {
+                    /// Actually an [i32]
+                    #[serde(rename = "Id")]
+                    id: String,
+                    #[serde(rename = "Uniquid")]
+                    uid: String,
+                    /// Actually an [i32]
+                    #[serde(rename = "Sender")]
+                    sender_id: String,
+                    sender_type: String,
+
+                }
+
+                #[derive(Serialize, Deserialize, Debug)]
+                struct JsonConversationMessageStats {
+
+                }
+
+                #[derive(Serialize, Deserialize, Debug)]
+                struct JsonConversationToolOptions {
+                    #[serde(rename = "AllowSuSToSuSMessages")]
+                    allow_sus_to_sus_messages: String,
+                }
+
+                let text = response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to parse text of response '{}'", e)))?;
+                let encrypted_json = serde_json::from_str::<EncJsonConversation>(&text).map_err(|e| ConversationError::Parsing(format!("failed to parse encrypted json '{}'", e)))?;
+                println!("{:#?}", encrypted_json);
+                let decrypted_json = {
+                    let mut result = encrypted_json;
+                    let decrypted_message = decrypt_lanis_string_with_key(&result.message, &keys.public_key_string).await.map_err(|e| ConversationError::Crypto(format!("failed to decrypt message json '{}'", e)))?;
+                    result.message = decrypted_message;
+                    result
+                };
+                println!();
+                println!("{:#?}", decrypted_json);
+
+                Ok(())
+            }
+            Err(e) => Err(ConversationError::Network(format!("failed to post message '{e}'")))
+        }
+    }
+}
+
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct Conversation {
+    pub id: i32,
+    pub uid: String,
+
+    /// Is the [Conversation] a group chat
+    pub group_chat: bool,
+    /// Does the [Conversation] only allow private answers
+    pub only_private_answers: bool,
+    /// Does the [Conversation] allow replies
+    pub can_reply: bool,
+
+    /// How many students are in the [Conversation]
+    pub amount_students: i32,
+    /// How many teachers are in the [Conversation]
+    pub amount_teachers: i32,
+    /// How many parents are in the [Conversation]
+    pub amount_parents: i32,
+
+    /// All [Participant]'s / receiver that are in the [Conversation]
+    pub participants: Vec<Participant>,
+
+    /// All [Message]'s in the conversation
+    pub messages: Vec<Message>,
+}
+
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub struct Participant {
+    /// The name of the [Participant]
+    pub name: String,
+    /// may be unknown if the [Participant] never wrote something in the chat
+    pub account_type: AccountType
+}
+
+use crate::base::account::Account;
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct Message {
+    /// The date this [Message] was sent
+    pub date: DateTime<FixedOffset>,
+    /// The author of this [Message]
+    pub author: Participant,
+    /// Was this [Message] send by the current [Account]
+    pub own: bool,
+    /// The content of this [Message]
+    pub content: String,
 }
