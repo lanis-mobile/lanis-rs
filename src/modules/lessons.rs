@@ -405,6 +405,8 @@ impl Lesson {
                 }
 
                 let marks_table_rows_selector = Selector::parse("table>tbody>tr").unwrap();
+                let td_selector = Selector::parse("td").unwrap();
+                let comment_info_selector = Selector::parse("span.fa.fa-comment").unwrap();
                 let marks_table_rows = marks_doc.select(&marks_table_rows_selector);
 
                 let mut marks = vec![];
@@ -414,18 +416,26 @@ impl Lesson {
                         let name = row.child_elements().nth(0).unwrap().text().collect::<String>().trim().to_string();
                         let date = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().to_string();
                         let mark = row.child_elements().nth(2).unwrap().text().collect::<String>().trim().to_string();
-                        let comment = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().split(":").nth(1).unwrap_or_default().trim().to_string();
+                        let comment = match row.next_sibling_element() {
+                            Some(element) => {
+                                match element.select(&td_selector).nth(1) {
+                                    Some(comment_element) => {
+                                        if let Some(_) = comment_element.select(&comment_info_selector).nth(0) {
+                                            Some(comment_element.text().collect::<String>().trim().to_string().split(':').nth(1).unwrap_or_default().trim().to_string())
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                    None => None,
+                                }
+                            }
+                            None => None,
+                        };
                         marks.push(LessonMark{
                             name,
                             date,
                             mark,
-                            comment: {
-                                if comment.is_empty() {
-                                    None
-                                } else {
-                                    Some(comment)
-                                }
-                            }
+                            comment,
                         });
                     }
                 }
@@ -640,7 +650,7 @@ impl LessonUpload {
                     let url = format!("{}{}", URL::BASE, href);
                     let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string().parse::<i32>().map_err(|_| "Failed to parse index of file as i32")?;
                     let comment = {
-                        match element.children().nth(10) {
+                        match element.children().nth(9) {
                             Some(node) => {
                                 // TODO: TEST
                                 match node.value().as_text() {
