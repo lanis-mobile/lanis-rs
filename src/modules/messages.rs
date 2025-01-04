@@ -14,6 +14,7 @@ pub enum ConversationError {
     /// Happens if anything goes wrong with parsing
     Parsing(String),
     Crypto(String),
+    DateTime(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -31,6 +32,21 @@ pub struct ConversationOverview {
 }
 
 impl ConversationOverview {
+    fn parse_name(html_string: &String) -> Result<String, ConversationError> {
+        let html = Html::parse_fragment(&html_string);
+        let selector = Selector::parse("span.label.label-info").unwrap();
+        let new_html = Html::parse_fragment(&match html.select(&selector).nth(0) {
+            Some(element) => element.inner_html(),
+            None => html.to_owned().html()
+        });
+
+        let mut html = new_html.to_owned();
+        let i_selector = Selector::parse("i.fas").unwrap();
+        let _ = new_html.select(&i_selector).map(|element| html.remove_from_parent(&element.id()));
+
+        Ok(html.root_element().text().collect::<String>().trim().to_string())
+    }
+
     /// Get all [ConversationOverview]'s (hidden and visible)
     pub async fn get_root(client: &Client, keys: &LanisKeyPair) -> Result<Vec<ConversationOverview>, ConversationError> {
         match client.post(URL::MESSAGES).form(&[("a", "headers"), ("getType", "All"), ("last", "0")]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
@@ -71,27 +87,13 @@ impl ConversationOverview {
                     fn from(json_row: ConversationRowJson) -> Result<ConversationOverview, ConversationError> {
                         let id = json_row.id.parse::<i32>().map_err(|e| ConversationError::Parsing(format!("failed to parse id as i32 '{}'", e)))?;
                         let uid = json_row.uniquid.to_owned();
-                        fn parse_name(html_string: &String) -> Result<String, ConversationError> {
-                            let html = Html::parse_fragment(&html_string);
-                            let selector = Selector::parse("span.label.label-info").unwrap();
-                            let new_html = Html::parse_fragment(&match html.select(&selector).nth(0) {
-                                Some(element) => element.inner_html(),
-                                None => html.to_owned().html()
-                            });
-
-                            let mut html = new_html.to_owned();
-                            let i_selector = Selector::parse("i.fas").unwrap();
-                            let _ = new_html.select(&i_selector).map(|element| html.remove_from_parent(&element.id()));
-
-                            Ok(html.root_element().text().collect::<String>().trim().to_string())
-                        }
-                        let sender = parse_name(&json_row.sender_name)?;
+                        let sender = ConversationOverview::parse_name(&json_row.sender_name)?;
                         let sender_id = json_row.sender.parse::<i32>().map_err(|e| ConversationError::Parsing(format!("failed to parse sender as i32 '{}'", e)))?;
-                        let sender_short = parse_name(&json_row.kuerzel)?;
+                        let sender_short = ConversationOverview::parse_name(&json_row.kuerzel)?;
                         let receiver = {
                             let mut result = Vec::new();
                             for receiver in &json_row.empf {
-                                result.push(parse_name(&receiver)?);
+                                result.push(ConversationOverview::parse_name(&receiver)?);
                             };
                             result
                         };
@@ -210,7 +212,12 @@ impl ConversationOverview {
 
                 #[derive(Serialize, Deserialize, Debug)]
                 struct JsonConversationMessageStats {
-
+                    #[serde(rename = "teilnehmer")]
+                    pub participants: i32,
+                    #[serde(rename = "betreuer")]
+                    pub supervisors: i32,
+                    #[serde(rename = "eltern")]
+                    pub parents: i32,
                 }
 
                 #[derive(Serialize, Deserialize, Debug)]
@@ -219,17 +226,94 @@ impl ConversationOverview {
                     allow_sus_to_sus_messages: String,
                 }
 
+                #[derive(Serialize, Deserialize, Debug)]
+                pub struct DecJsonMessageField {
+                    #[serde(rename = "Id")]
+                    id: String,
+                    #[serde(rename = "Uniquid")]
+                    uid: String,
+                    #[serde(rename = "Sender")]
+                    sender: String,
+                    #[serde(rename = "SenderArt")]
+                    sender_type: String,
+                    /// None if a reply
+                    #[serde(rename = "groupOnly")]
+                    group_only: Option<String>,
+                    /// None if a reply
+                    #[serde(rename = "privateAnswerOnly")]
+                    private_answer_only: Option<String>,
+                    /// None if a reply
+                    #[serde(rename = "noAnswerAllowed")]
+                    no_answer_allowed: Option<String>,
+                    #[serde(rename = "Betreff")]
+                    subject: String,
+                    #[serde(rename = "Datum")]
+                    date: String,
+                    #[serde(rename = "Inhalt")]
+                    content: String,
+                    /// None if a reply
+                    #[serde(rename = "Papierkorb")]
+                    hidden: Option<String>,
+                    #[serde(rename = "statistik")]
+                    stats: JsonConversationMessageStats,
+                    own: bool,
+                    #[serde(rename = "username")]
+                    sender_name: String,
+                    noanswer: bool,
+                    #[serde(rename = "Delete")]
+                    delete: String,
+                    #[serde(rename = "reply")]
+                    replies: Vec<DecJsonMessageField>,
+                    private: i32,
+                    #[serde(rename = "ungelesen")]
+                    unread: bool,
+                    #[serde(rename = "AntwortAufAusgeblendeteNachricht")]
+                    answer_to_hidden: bool,
+                }
+
                 let text = response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to parse text of response '{}'", e)))?;
                 let encrypted_json = serde_json::from_str::<EncJsonConversation>(&text).map_err(|e| ConversationError::Parsing(format!("failed to parse encrypted json '{}'", e)))?;
-                println!("{:#?}", encrypted_json);
                 let decrypted_json = {
                     let mut result = encrypted_json;
                     let decrypted_message = decrypt_lanis_string_with_key(&result.message, &keys.public_key_string).await.map_err(|e| ConversationError::Crypto(format!("failed to decrypt message json '{}'", e)))?;
-                    result.message = decrypted_message;
+                    result.message = format!("{}}}", decrypted_message.rsplit_once("}").unwrap_or_default().0);
                     result
                 };
-                println!();
-                println!("{:#?}", decrypted_json);
+                let decrypted_json_message_field = serde_json::from_str::<DecJsonMessageField>(&decrypted_json.message).map_err(|e| ConversationError::Parsing(format!("failed to parse message field in decrypted json '{}'", e)))?;
+
+                fn parse_messages(json: &DecJsonMessageField) -> Result<Vec<Message>, ConversationError> {
+                    let mut messages = Vec::new();
+                    messages.push({
+                        let id = json.id.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse message id '{}'", e)))?;
+                        let date_split = json.date.split_once(" ").unwrap_or_default();
+                        let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| ConversationError::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?;
+                        let author = {
+                            let id = json.sender.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse sender id '{}'", e)))?;
+                            let name = ConversationOverview::parse_name(&json.sender_name)?;
+                            let account_type = match json.sender_type.as_str() {
+                                "Teilnehmer" => AccountType::Student,
+                                "Betreuer" => AccountType::Teacher,
+                                "Eltern" => AccountType::Parent,
+                                _ => AccountType::Unknown
+                            };
+
+                            Participant { id, name, account_type }
+                        };
+                        let own = json.own.to_owned();
+                        let content = json.content.to_owned();
+
+                        Message { id, date, author, own, content }
+                    });
+
+                    for reply in &json.replies {
+                        let reply_messages = parse_messages(reply)?;
+                        messages.extend(reply_messages);
+                    }
+
+                    Ok(messages)
+                }
+
+                let messages = parse_messages(&decrypted_json_message_field)?;
 
                 Ok(())
             }
@@ -253,7 +337,8 @@ pub struct Conversation {
 
     /// How many students are in the [Conversation]
     pub amount_students: i32,
-    /// How many teachers are in the [Conversation]
+    /// How many teachers are in the [Conversation] <br> <br>
+    /// Note: technically these are supervisors but teachers are as far as I know always supervisors
     pub amount_teachers: i32,
     /// How many parents are in the [Conversation]
     pub amount_parents: i32,
@@ -268,6 +353,7 @@ pub struct Conversation {
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct Participant {
+    pub id: i32,
     /// The name of the [Participant]
     pub name: String,
     /// may be unknown if the [Participant] never wrote something in the chat
@@ -275,8 +361,11 @@ pub struct Participant {
 }
 
 use crate::base::account::Account;
+use crate::utils::datetime::date_time_string_to_datetime;
+
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Message {
+    pub id: i32,
     /// The date this [Message] was sent
     pub date: DateTime<FixedOffset>,
     /// The author of this [Message]

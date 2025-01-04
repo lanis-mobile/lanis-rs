@@ -8,7 +8,7 @@ pub(crate) enum DateTimeError {
 }
 
 /// Converts CEST DateTime to NaiveDateTime (takes DateTime String in format: %d.%m.%Y %H:%M:%S)
-pub(crate) async fn date_time_string_to_datetime(date: &String, time: &String) -> Result<DateTime<FixedOffset>, DateTimeError> {
+pub(crate) fn date_time_string_to_datetime(date: &str, time: &str) -> Result<DateTime<FixedOffset>, DateTimeError> {
     let date_time = DateTime::parse_from_str(&format!("{} {} +02:00", date, time), "%d.%m.%Y %H:%M:%S %z").map_err(|e| DateTimeError::TimeInvalid(e.to_string()))?;
     Ok(date_time)
 }

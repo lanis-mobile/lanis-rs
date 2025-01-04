@@ -135,7 +135,7 @@ impl FileStoragePage {
                             let date = split.nth(0).ok_or_else(|| FileStorageError::Parsing(String::from("failed to parse date for file node 'not found'")))?.to_string();
                             let time = split.nth(0).ok_or_else(|| FileStorageError::Parsing(String::from("failed to parse time for file node 'not found'")))?.to_string();
 
-                            date_time_string_to_datetime(&date, &time).await.map_err(|e| FileStorageError::DateTime(format!("failed to convert file node changed date & time to DateTime '{:?}'", e)))?
+                            date_time_string_to_datetime(&date, &time).map_err(|e| FileStorageError::DateTime(format!("failed to convert file node changed date & time to DateTime '{:?}'", e)))?
                         },
                         None => DateTime::from_timestamp_nanos(0).into(),
                     };

@@ -720,7 +720,7 @@ impl LessonUpload {
                     let hms = format!("{}:{}", s.split(" ").nth(3).unwrap(), "00");
 
                     let result = date_time_string_to_datetime(&ymd, &hms);
-                    Ok(result.await.map_err(|_| "failed to convert lanis time to cron time".to_string())?)
+                    Ok(result.map_err(|_| "failed to convert lanis time to cron time".to_string())?)
                 }
 
                 let start = {
