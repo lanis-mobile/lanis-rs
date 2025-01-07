@@ -4,7 +4,7 @@ use scraper::{Element, ElementRef, Html, Selector};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::SystemTime;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use markup5ever::interface::tree_builder::TreeSink;
 use regex::Regex;
 use reqwest::Client;
@@ -40,7 +40,7 @@ pub struct Lesson {
 #[derive(Debug, Clone)]
 pub struct LessonEntry {
     pub id: i32,
-    pub date: String,
+    pub date: DateTime<Utc>,
     pub school_hours: Vec<i32>,
     pub title: String,
     pub details: Option<String>,
@@ -70,7 +70,7 @@ pub struct LessonUpload {
     pub state: bool,
     pub url: String,
     pub uploaded: Option<String>,
-    pub date: Option<String>,
+    pub date: Option<DateTime<Utc>>,
     pub info: Option<LessonUploadInfo>,
 }
 
@@ -92,11 +92,6 @@ pub struct LessonUploadInfo {
     pub extra: Option<String>,
     pub own_files: Vec<LessonUploadInfoOwnFile>,
     pub public_files: Vec<LessonUploadInfoPublicFile>,
-}
-#[derive(Debug, Clone)]
-pub struct LessonUploadInfoStart {
-    pub date: String,
-    pub time: String,
 }
 
 #[derive(Debug, Clone)]
@@ -124,7 +119,7 @@ pub struct LessonUploadFileStatus {
 #[derive(Debug, Clone)]
 pub struct LessonMark {
     pub name: String,
-    pub date: String,
+    pub date: DateTime<Utc>,
     pub mark: String,
     pub comment: Option<String>,
 }
@@ -281,7 +276,7 @@ impl Lesson {
                                     let text = text.replace("bis ", "").trim().to_string();
                                     let text = text.replace("um", "").trim().to_string();
 
-                                    text
+                                    date_time_string_to_datetime(text.as_str(), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc()
                                 };
                                 let id = url.split("&id=").last().unwrap().parse::<i32>().unwrap();
 
@@ -340,6 +335,7 @@ impl Lesson {
                     };
 
                     let date = row.child_elements().nth(0).unwrap().text().collect::<String>().split("\n").nth(0).unwrap().trim().to_string();
+                    let date = date_time_string_to_datetime(date.as_str(), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc();
                     let school_hours = {
                         let mut school_hours = vec![];
 
@@ -414,7 +410,7 @@ impl Lesson {
                 for row in marks_table_rows {
                     if row.child_elements().count() == 3 {
                         let name = row.child_elements().nth(0).unwrap().text().collect::<String>().trim().to_string();
-                        let date = row.child_elements().nth(1).unwrap().text().collect::<String>().trim().to_string();
+                        let date = date_time_string_to_datetime(&format!("{}{}", row.child_elements().nth(1).unwrap().text().collect::<String>().trim().split_once(",").unwrap_or_default().1.trim(), chrono::Local::now().year()), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc();
                         let mark = row.child_elements().nth(2).unwrap().text().collect::<String>().trim().to_string();
                         let comment = match row.next_sibling_element() {
                             Some(element) => {
@@ -1003,6 +999,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
 
                                 let topic_date_selector = Selector::parse(".datum").unwrap();
                                 let topic_date = collect_text(school_class.select(&topic_date_selector).next()).unwrap_or("".to_string());
+                                let topic_date = date_time_string_to_datetime(topic_date.as_str(), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc();
 
                                 let course_url_selector = Selector::parse("td>h3>a").unwrap();
                                 let course_url = school_class.select(&course_url_selector).next().map(|x| x.value().attr("href").unwrap().to_string().trim().to_string()).unwrap_or("".to_string());
