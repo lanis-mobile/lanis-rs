@@ -1,4 +1,4 @@
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, Utc};
 use markup5ever::interface::TreeSink;
 use reqwest::{Client, Response};
 use reqwest::header::HeaderValue;
@@ -25,7 +25,7 @@ pub struct ConversationOverview {
     pub sender_short: String,
     pub receiver: Vec<Participant>,
     pub subject: String,
-    pub date_time: DateTime<FixedOffset>,
+    pub date_time: DateTime<Utc>,
     pub read: bool,
     pub visible: bool,
 }
@@ -114,8 +114,7 @@ impl ConversationOverview {
                             result
                         };
                         let subject = json_row.betreff.to_owned();
-                        let date_time_utc = DateTime::from_timestamp(json_row.datum_unix.to_owned(), 0).unwrap_or(DateTime::UNIX_EPOCH);
-                        let date_time = date_time_utc.fixed_offset();
+                        let date_time = DateTime::from_timestamp(json_row.datum_unix.to_owned(), 0).unwrap_or(DateTime::UNIX_EPOCH);
                         let read = match json_row.unread.unwrap_or(0) { 0 => true, 1 => false, _ => return Err(ConversationError::Parsing(String::from("failed to parse unread as bool (read) 'unexpected i32'"))) };
                         let visible = match json_row.papierkorb.as_str() { "ja" => false, "nein" => true, _ => return Err(ConversationError::Parsing(String::from("failed to parse visible as bool 'unexpected &str'"))) };
 
@@ -301,7 +300,7 @@ impl ConversationOverview {
                     messages.push({
                         let id = json.id.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse message id '{}'", e)))?;
                         let date_split = json.date.split_once(" ").unwrap_or_default();
-                        let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| ConversationError::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?;
+                        let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| ConversationError::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?.to_utc();
                         let author = {
                             let id = Some(json.sender.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse sender id '{}'", e)))?);
                             let name = ConversationOverview::parse_name(&json.sender_name)?;
@@ -438,7 +437,7 @@ use crate::utils::datetime::date_time_string_to_datetime;
 pub struct Message {
     pub id: i32,
     /// The date this [Message] was sent
-    pub date: DateTime<FixedOffset>,
+    pub date: DateTime<Utc>,
     /// The author of this [Message]
     pub author: Participant,
     /// Was this [Message] send by the current [Account]

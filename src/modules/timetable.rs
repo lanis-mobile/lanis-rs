@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use chrono::{DateTime, Days, FixedOffset, NaiveDate, NaiveTime};
+use chrono::{DateTime, Days, NaiveDate, NaiveTime, Utc};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
@@ -51,8 +51,8 @@ pub struct LessonEntry {
     pub teachers: Vec<String>,
     /// School hours are **only** available if [Provider::Lanis] is used
     pub school_hours: Vec<i32>,
-    pub start: DateTime<FixedOffset>,
-    pub end: DateTime<FixedOffset>,
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
     /// The room numbers (e.g. B209)
     pub rooms: Vec<String>,
     /// Only available if [Provider::Untis] is used
@@ -62,7 +62,7 @@ pub struct LessonEntry {
 }
 
 impl LessonEntry {
-    pub fn new(status: LessonEntryStatus, subjects: Vec<String>, teachers: Vec<String>, school_hours: Vec<i32>, start: DateTime<FixedOffset>, end: DateTime<FixedOffset>, rooms: Vec<String>, lesson_text: Option<String>, substitution_text: Option<String>) -> Self {
+    pub fn new(status: LessonEntryStatus, subjects: Vec<String>, teachers: Vec<String>, school_hours: Vec<i32>, start: DateTime<Utc>, end: DateTime<Utc>, rooms: Vec<String>, lesson_text: Option<String>, substitution_text: Option<String>) -> Self {
         Self { status, subjects, teachers, school_hours, start, end, rooms, lesson_text, substitution_text }
     }
 }
@@ -206,11 +206,11 @@ impl Week {
 
                             let start = merge_naive_date_time_to_datetime(&date.checked_add_days(
                                 Days::new((day - 1) as u64)).unwrap(), &hour_times.get(&(school_hours.first().unwrap().clone() as usize)).unwrap()[0])
-                                .map_err(|e| Error::DateTime(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
+                                .map_err(|e| Error::DateTime(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?.to_utc();
 
                             let end =  merge_naive_date_time_to_datetime(&date.checked_add_days(
                                 Days::new((day - 1) as u64)).unwrap(), &hour_times.get(&(school_hours.last().unwrap().clone() as usize)).unwrap()[1])
-                                .map_err(|e| Error::DateTime(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?;
+                                .map_err(|e| Error::DateTime(format!("Failed to parse NaiveDate & NaiveTime as DateTime: {:?}", e)))?.to_utc();
 
                             entries.push(LessonEntry {
                                 status: LessonEntryStatus::Normal,
@@ -318,8 +318,8 @@ impl Week {
                 let teachers = lesson.teachers.iter().map(|id| id.name.clone()).collect::<Vec<_>>();
                 let school_hours = Vec::new();
                 let date = lesson.date.to_chrono();
-                let start = merge_naive_date_time_to_datetime(&date, &lesson.start_time).map_err(|e| Error::DateTime(format!("Failed to convert start time of lesson: {:?}", e)))?;
-                let end = merge_naive_date_time_to_datetime(&date, &lesson.end_time).map_err(|e| Error::DateTime(format!("Failed to convert end time of lesson: {:?}", e)))?;
+                let start = merge_naive_date_time_to_datetime(&date, &lesson.start_time).map_err(|e| Error::DateTime(format!("Failed to convert start time of lesson: {:?}", e)))?.to_utc();
+                let end = merge_naive_date_time_to_datetime(&date, &lesson.end_time).map_err(|e| Error::DateTime(format!("Failed to convert end time of lesson: {:?}", e)))?.to_utc();
                 let rooms = lesson.rooms.iter().map(|id| id.name.clone()).collect::<Vec<_>>();
                 let lesson_text = if lesson.lstext.is_empty() { None } else { Some(lesson.lstext) };
                 let substitution_text = lesson.subst_text;

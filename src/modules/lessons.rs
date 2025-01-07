@@ -4,7 +4,7 @@ use scraper::{Element, ElementRef, Html, Selector};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::SystemTime;
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, Utc};
 use markup5ever::interface::tree_builder::TreeSink;
 use regex::Regex;
 use reqwest::Client;
@@ -78,8 +78,8 @@ pub struct LessonUpload {
 pub struct LessonUploadInfo {
     pub course_id: Option<i32>,
     pub entry_id: Option<i32>,
-    pub start: Option<DateTime<FixedOffset>>,
-    pub end: Option<DateTime<FixedOffset>>,
+    pub start: Option<DateTime<Utc>>,
+    pub end: Option<DateTime<Utc>>,
     /// Represents if multiple files can be uploaded
     pub multiple_files: bool,
     /// Represents if files can be uploaded unlimited times
@@ -715,12 +715,12 @@ impl LessonUpload {
                 let end = end.await;
                 let automatic_deletion = automatic_deletion.await;
 
-                async fn parse_date_time(s: String) -> Result<DateTime<FixedOffset>, String> {
+                async fn parse_date_time(s: String) -> Result<DateTime<Utc>, String> {
                     let ymd = format!("{}", &s.split(" ").nth(2).unwrap());
                     let hms = format!("{}:{}", s.split(" ").nth(3).unwrap(), "00");
 
                     let result = date_time_string_to_datetime(&ymd, &hms);
-                    Ok(result.map_err(|_| "failed to convert lanis time to cron time".to_string())?)
+                    Ok(result.map_err(|_| "failed to convert lanis time to cron time".to_string())?.to_utc())
                 }
 
                 let start = {

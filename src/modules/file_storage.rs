@@ -1,5 +1,5 @@
 use tokio::fs::File;
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, Utc};
 use markup5ever::interface::TreeSink;
 use markup5ever::tendril::fmt::Slice;
 use reqwest::Client;
@@ -129,13 +129,13 @@ impl FileStoragePage {
                         None => return Err(FileStorageError::Parsing(String::from("failed to parse name of file node 'name is None'")))
                     };
 
-                    let changed: DateTime<FixedOffset> = match changed_future.await {
+                    let changed = match changed_future.await {
                         Some(changed) => {
                             let mut split = changed.split(' ');
                             let date = split.nth(0).ok_or_else(|| FileStorageError::Parsing(String::from("failed to parse date for file node 'not found'")))?.to_string();
                             let time = split.nth(0).ok_or_else(|| FileStorageError::Parsing(String::from("failed to parse time for file node 'not found'")))?.to_string();
 
-                            date_time_string_to_datetime(&date, &time).map_err(|e| FileStorageError::DateTime(format!("failed to convert file node changed date & time to DateTime '{:?}'", e)))?
+                            date_time_string_to_datetime(&date, &time).map_err(|e| FileStorageError::DateTime(format!("failed to convert file node changed date & time to DateTime '{:?}'", e)))?.to_utc()
                         },
                         None => DateTime::from_timestamp_nanos(0).into(),
                     };
@@ -160,13 +160,13 @@ pub struct FileNode {
     pub id: i32,
     pub name: String,
     /// The last time the file was changed
-    pub changed: DateTime<FixedOffset>,
+    pub changed: DateTime<Utc>,
     pub size: u64,
     pub notice: Option<String>,
 }
 
 impl FileNode {
-    pub fn new(id: i32, name: String, changed: DateTime<FixedOffset>, size: u64, notice: Option<String>) -> Self {
+    pub fn new(id: i32, name: String, changed: DateTime<Utc>, size: u64, notice: Option<String>) -> Self {
         Self { id, name, changed, size, notice }
     }
 
