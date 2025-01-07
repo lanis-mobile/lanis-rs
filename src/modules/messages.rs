@@ -21,10 +21,9 @@ pub enum ConversationError {
 pub struct ConversationOverview {
     pub id: i32,
     pub uid: String,
-    pub sender: String,
-    pub sender_id: i32,
+    pub sender: Participant,
     pub sender_short: String,
-    pub receiver: Vec<String>,
+    pub receiver: Vec<Participant>,
     pub subject: String,
     pub date_time: DateTime<FixedOffset>,
     pub read: bool,
@@ -33,18 +32,34 @@ pub struct ConversationOverview {
 
 impl ConversationOverview {
     fn parse_name(html_string: &String) -> Result<String, ConversationError> {
-        let html = Html::parse_fragment(&html_string);
-        let selector = Selector::parse("span.label.label-info").unwrap();
-        let new_html = Html::parse_fragment(&match html.select(&selector).nth(0) {
-            Some(element) => element.inner_html(),
-            None => html.to_owned().html()
-        });
+        let mut html = Html::parse_fragment(&html_string);
 
-        let mut html = new_html.to_owned();
         let i_selector = Selector::parse("i.fas").unwrap();
-        let _ = new_html.select(&i_selector).map(|element| html.remove_from_parent(&element.id()));
+        let _ = html.to_owned().select(&i_selector).map(|element| html.remove_from_parent(&element.id()));
 
         Ok(html.root_element().text().collect::<String>().trim().to_string())
+    }
+
+    /// Parses a [Participant] from the name html <br>
+    /// <br>
+    /// NOTE: This will not include an id
+    fn parse_participant(html_string: &String) -> Result<Participant, ConversationError> {
+        let mut html = Html::parse_fragment(&html_string);
+
+        let i_selector = Selector::parse("i.fas").unwrap();
+        let i_selector_teacher = Selector::parse("i.fas.fa-user").unwrap();
+        let i_selector_student = Selector::parse("i.fas.fa-child").unwrap();
+
+        let account_type = { // TODO: Add Parent accounts
+            if html.select(&i_selector_student).nth(0).is_some() { AccountType::Student }
+            else if html.select(&i_selector_teacher).nth(0).is_some() { AccountType::Teacher }
+            else { AccountType::Unknown }
+        };
+
+        let _ = html.to_owned().select(&i_selector).map(|element| html.remove_from_parent(&element.id()));
+        let name = html.root_element().text().collect::<String>().trim().to_string();
+
+        Ok(Participant {id: None, name, account_type})
     }
 
     /// Get all [ConversationOverview]'s (hidden and visible)
@@ -87,13 +102,14 @@ impl ConversationOverview {
                     fn from(json_row: ConversationRowJson) -> Result<ConversationOverview, ConversationError> {
                         let id = json_row.id.parse::<i32>().map_err(|e| ConversationError::Parsing(format!("failed to parse id as i32 '{}'", e)))?;
                         let uid = json_row.uniquid.to_owned();
-                        let sender = ConversationOverview::parse_name(&json_row.sender_name)?;
+                        let mut sender = ConversationOverview::parse_participant(&json_row.sender_name)?;
                         let sender_id = json_row.sender.parse::<i32>().map_err(|e| ConversationError::Parsing(format!("failed to parse sender as i32 '{}'", e)))?;
+                        sender.id = Some(sender_id);
                         let sender_short = ConversationOverview::parse_name(&json_row.kuerzel)?;
                         let receiver = {
                             let mut result = Vec::new();
                             for receiver in &json_row.empf {
-                                result.push(ConversationOverview::parse_name(&receiver)?);
+                                result.push(ConversationOverview::parse_participant(&receiver)?);
                             };
                             result
                         };
@@ -107,7 +123,6 @@ impl ConversationOverview {
                             id,
                             uid,
                             sender,
-                            sender_id,
                             sender_short,
                             receiver,
                             subject,
@@ -163,7 +178,7 @@ impl ConversationOverview {
 
 
     /// Get the full [Conversation]
-    pub async fn get(&self, client: &Client, keys: &LanisKeyPair) -> Result<(), ConversationError> {
+    pub async fn get(&self, client: &Client, keys: &LanisKeyPair) -> Result<Conversation, ConversationError> {
         let enc_uid = encrypt_lanis_data(self.uid.as_bytes(), &keys.public_key_string);
 
         let query = [("a", "read"), ("msg", self.uid.as_str())];
@@ -288,7 +303,7 @@ impl ConversationOverview {
                         let date_split = json.date.split_once(" ").unwrap_or_default();
                         let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| ConversationError::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?;
                         let author = {
-                            let id = json.sender.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse sender id '{}'", e)))?;
+                            let id = Some(json.sender.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse sender id '{}'", e)))?);
                             let name = ConversationOverview::parse_name(&json.sender_name)?;
                             let account_type = match json.sender_type.as_str() {
                                 "Teilnehmer" => AccountType::Student,
@@ -299,6 +314,7 @@ impl ConversationOverview {
 
                             Participant { id, name, account_type }
                         };
+
                         let own = json.own.to_owned();
                         let content = json.content.to_owned();
 
@@ -315,7 +331,61 @@ impl ConversationOverview {
 
                 let messages = parse_messages(&decrypted_json_message_field)?;
 
-                Ok(())
+                async fn parse_participants(messages: &Vec<Message>, receivers: &Vec<Participant>, sender: &Participant) -> Result<Vec<Participant>, ConversationError> {
+                    let mut participants = Vec::new();
+                    participants.append(receivers.to_owned().as_mut());
+                    participants.push(sender.to_owned());
+
+                    for message in messages {
+                        if !participants.contains(&message.author) {
+                            participants.push(message.author.to_owned());
+                        }
+                    }
+
+                    Ok(participants)
+                }
+
+                let participants = parse_participants(&messages, &self.receiver, &self.sender).await?;
+
+                let id = self.id.to_owned();
+                let uid = self.uid.to_owned();
+
+                async fn match_german_string_bool(string: &Option<String>) -> Result<bool, ConversationError> {
+                    if let Some(string) = string {
+                        Ok(match string.as_str() {
+                            "ja" => true,
+                            "nein" => false,
+                            _ => false
+                        })
+                    } else {
+                        Err(ConversationError::Parsing(String::from("group chat entry is missing 'is None'")))
+                    }
+                }
+
+                let group_chat = match_german_string_bool(&decrypted_json_message_field.group_only).await?;
+                let only_private_answers = match_german_string_bool(&decrypted_json_message_field.private_answer_only).await?;
+                let can_reply = !match_german_string_bool(&decrypted_json_message_field.no_answer_allowed).await?;
+
+                let amount_participants = decrypted_json_message_field.stats.participants;
+                let amount_teachers = decrypted_json_message_field.stats.supervisors;
+                let amount_parents = decrypted_json_message_field.stats.parents;
+
+                Ok(Conversation {
+                    id,
+                    uid,
+
+                    group_chat,
+                    only_private_answers,
+                    can_reply,
+
+                    amount_participants,
+                    amount_teachers,
+                    amount_parents,
+
+                    participants,
+
+                    messages
+                })
             }
             Err(e) => Err(ConversationError::Network(format!("failed to post message '{e}'")))
         }
@@ -335,8 +405,8 @@ pub struct Conversation {
     /// Does the [Conversation] allow replies
     pub can_reply: bool,
 
-    /// How many students are in the [Conversation]
-    pub amount_students: i32,
+    /// How many participants are in the [Conversation] <br> <br>
+    pub amount_participants: i32,
     /// How many teachers are in the [Conversation] <br> <br>
     /// Note: technically these are supervisors but teachers are as far as I know always supervisors
     pub amount_teachers: i32,
@@ -353,7 +423,7 @@ pub struct Conversation {
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct Participant {
-    pub id: i32,
+    pub id: Option<i32>,
     /// The name of the [Participant]
     pub name: String,
     /// may be unknown if the [Participant] never wrote something in the chat
