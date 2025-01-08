@@ -1,6 +1,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use crate::utils::constants::URL;
+use crate::Error;
 
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
@@ -8,11 +9,6 @@ pub struct School {
     pub id: i32,
     pub name: String,
     pub city: String,
-}
-
-pub enum Error {
-    NotFound(String),
-    UntisAPI(String),
 }
 
 /// Returns the ID of a school based on name and city and takes a Vector of all schools <br> Returns -1 if no school was found
@@ -39,7 +35,7 @@ pub async fn get_school(id: &i32, schools: &Vec<School>) -> Result<School, Error
             return Ok(school.clone())
         }
     }
-    Err(Error::NotFound(format!("No school with id {} found", id)))
+    Err(Error::SchoolNotFound(format!("No school with id {} found", id)))
 }
 
 pub async fn get_schools(client: &Client) -> Result<Vec<School>, String> {

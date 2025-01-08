@@ -12,6 +12,53 @@ pub enum Feature {
     MessagesBeta,
 }
 
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub enum Error {
+    Network(String),
+    /// Happens if anything goes wrong with parsing
+    Parsing(String),
+    Crypto(String),
+    Html(String),
+    /// Happens if something goes wrong when logging into Untis
+    Credentials(String),
+    /// Happens if anything goes wrong while accessing the Untis API
+    UntisAPI(String),
+    /// Happens if anything goes wrong when processing Dates and/or Times
+    DateTime(String),
+    /// Happens if something goes wrong with Threads (like [tokio::task::spawn_blocking]
+    Threading(String),
+    /// Happens if no school with the provided id is found
+    NoSchool(String),
+    /// Happens if key_pair generation fails
+    KeyPair,
+    Login(String),
+    /// Happens if a specific school couldn't be found
+    SchoolNotFound(String),
+    /// Happens if anything goes wrong with uploading a file in Lessons
+    LessonUploadError(LessonUploadError),
+    /// Some other Error that may be an issue with the provided values or with the lanis backend
+    ServerSide(String),
+    /// Happens if anything goes wrong when interacting with the file system
+    FileSystem(String),
+}
+
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub enum LessonUploadError {
+    /// Happens if 'info' in [LessonUpload] is None
+    NoInfo,
+    /// Happens if course_id or entry_id in [LessonUpload] is None
+    /// This can happen if no UploadForm exists
+    NoDetailedInfo,
+    Network(String),
+    WrongPassword,
+    EncryptionFailed(String),
+    /// Deletion was not possible (Server Side)
+    DeletionFailed,
+    Unknown,
+    UnknownServerError,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -9,6 +9,8 @@ use aes::cipher::block_padding::{NoPadding, Pkcs7};
 use rand::random;
 use regex::Regex;
 use serde::de::DeserializeOwned;
+use crate::Error;
+use crate::Error::ServerSide;
 use crate::utils::constants::URL;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
@@ -27,7 +29,7 @@ pub struct LanisKeyPair {
 }
 
 /// Takes key_size (in bits) and returns an RSA KeyPair
-pub async fn generate_lanis_key_pair(key_size: usize, client: &Client) -> Result<LanisKeyPair, String> {
+pub async fn generate_lanis_key_pair(key_size: usize, client: &Client) -> Result<LanisKeyPair, Error> {
     let mut rng = rand::thread_rng();
     match RsaPrivateKey::new(&mut rng, key_size) {
         Ok(private_key) => {
@@ -50,15 +52,15 @@ pub async fn generate_lanis_key_pair(key_size: usize, client: &Client) -> Result
                             public_key_lanis,
                         })
                     }
-                    Err(e) => Err(format!("Handshake with lanis failed with error: '{}'", e)),
+                    Err(e) => Err(ServerSide(format!("Handshake with lanis failed with error: '{}'", e))),
                 }
 
             } else {
-                Err("Failed to convert private key and/or public key to pkcs8 pem!".to_string())
+                Err(Error::Parsing("Failed to convert private key and/or public key to pkcs8 pem!".to_string()))
             }
         }
         Err(e) => {
-            Err(format!("Failed to generate Private key!: {}", e))
+            Err(Error::Crypto(format!("Failed to generate Private key!: {}", e)))
         }
     }
 }
@@ -185,7 +187,7 @@ pub(crate) async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> Stri
     result
 }
 
-pub(crate) async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) -> Result<String, String> {
+pub(crate) async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) -> String {
     let exp = Regex::new(r"<encoded>(.*?)</encoded>").unwrap();
 
     let mut replaced_html = html_string.to_string();
@@ -198,7 +200,7 @@ pub(crate) async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) 
         }
     }
 
-    Ok(replaced_html.to_string())
+    replaced_html.to_string()
 }
 
 pub(crate) async fn decrypt_lanis_string_with_key(data: &str, public_key: &String) -> Result<String, String> {

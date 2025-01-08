@@ -12,6 +12,7 @@ use crate::base::schools::{get_school, get_schools, School};
 use crate::Feature;
 use crate::utils::constants::URL;
 use crate::utils::crypt::{decrypt_any, encrypt_any, generate_lanis_key_pair, CryptorError, LanisKeyPair};
+use crate::Error;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum AccountType {
@@ -35,25 +36,10 @@ pub struct Account {
     pub cookie_store: Arc<CookieStoreMutex>,
 }
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
-pub enum AccountError {
-    /// Can happen when doing a request to lanis
-    Network(String),
-    /// Happens if anything goes wrong with logging in
-    Login(String),
-    /// Happens if no school with the provided id is found
-    NoSchool(String),
-    /// Happens if key_pair generation fails
-    KeyPair,
-    /// Happens if anything goes wrong with parsing <br>
-    /// For example: `"a &str" as i32`
-    Parsing(String),
-}
-
 impl Account {
     /// Creates a new [Account] from a school_id, username and password <br>
     /// When using [new] a session gets automatically created and all fields will be set
-    pub async fn new(secrets: AccountSecrets) -> Result<Account, AccountError> {
+    pub async fn new(secrets: AccountSecrets) -> Result<Account, Error> {
         let cookie_store = CookieStore::new(None);
         let cookie_store = CookieStoreMutex::new(cookie_store);
         let cookie_store = Arc::new(cookie_store);
@@ -68,11 +54,11 @@ impl Account {
         let key_pair = generate_lanis_key_pair(128, &client).await;
 
         if key_pair.is_err() {
-            return Err(AccountError::KeyPair);
+            return Err(Error::KeyPair);
         }
 
-        let schools = get_schools(&client).await.map_err(|e| AccountError::Network(e.to_string()))?;
-        let school = get_school(&secrets.school_id, &schools).await.map_err(|_| AccountError::NoSchool(format!("No school with id {}", secrets.school_id)))?;
+        let schools = get_schools(&client).await.map_err(|e| Error::Network(e.to_string()))?;
+        let school = get_school(&secrets.school_id, &schools).await.map_err(|_| Error::NoSchool(format!("No school with id {}", secrets.school_id)))?;
 
         let mut account = Account {
             school,
@@ -98,7 +84,7 @@ impl Account {
       * Needs to be run on every new 'reqwest' client <br>
       * Doesn't need to be run if [new] was used
      */
-    pub async fn create_session(&self) -> Result<(), AccountError> {
+    pub async fn create_session(&self) -> Result<(), Error> {
         let params = [("user2", self.secrets.username.clone()), ("user", format!("{}.{}", self.school.id, self.secrets.username.clone())), ("password", self.secrets.password.clone())];
         let response = self.client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school.id)).form(&params).send();
         match response.await {
@@ -110,32 +96,32 @@ impl Account {
                                 Some(location) => {
                                     let location = location.to_str();
                                     if  location.is_err() {
-                                        return Err(AccountError::Parsing("failed to parse location header to str".to_string()))
+                                        return Err(Error::Parsing("failed to parse location header to str".to_string()))
                                     }
                                     let location = location.unwrap();
 
                                     match self.client.get(location).send().await {
                                         Ok(_) => Ok(()),
                                         Err(e) => {
-                                            Err(AccountError::Network(format!("error getting login URL header: {}", e)))
+                                            Err(Error::Network(format!("error getting login URL header: {}", e)))
                                         }
                                     }
                                 }
                                 None => {
-                                    Err(AccountError::Login("error getting login URL".to_string()))
+                                    Err(Error::Login("error getting login URL".to_string()))
                                 }
                             }
                         }
                         Err(e) => {
-                            Err(AccountError::Network(format!("{}", e)))
+                            Err(Error::Network(format!("{}", e)))
                         }
                     }
                 } else {
-                    Err(AccountError::Login(format!("login failed with status code {}", response.status().as_u16())))
+                    Err(Error::Login(format!("login failed with status code {}", response.status().as_u16())))
                 }
             }
             Err(e) => {
-                Err(AccountError::Network(e.to_string()))
+                Err(Error::Network(e.to_string()))
             }
         }
     }
@@ -144,7 +130,7 @@ impl Account {
      *  Refreshes the session to prevent getting logged out
      *  <br> Needs to be called periodically e.g. every 10 seconds
      */
-    pub async fn prevent_logout(&self) -> Result<(), AccountError> {
+    pub async fn prevent_logout(&self) -> Result<(), Error> {
         let sid: String = {
             let cs = self.cookie_store.lock().unwrap();
             let mut result = "NONE".to_string();
@@ -161,12 +147,12 @@ impl Account {
                 Ok(())
             }
             Err(e) => {
-                Err(AccountError::Network(format!("failed to refresh session: {}", e).to_string()))
+                Err(Error::Network(format!("failed to refresh session: {}", e).to_string()))
             }
         }
     }
 
-    pub async fn fetch_account_data(&self) -> Result<BTreeMap<String, String>, AccountError> {
+    pub async fn fetch_account_data(&self) -> Result<BTreeMap<String, String>, Error> {
         match self.client.get(URL::USER_DATA).query(&[("a", "userData")]).send().await {
             Ok(response) => {
                 let document = Html::parse_document(&*response.text().await.unwrap());
@@ -191,7 +177,7 @@ impl Account {
                 Ok(result)
             }
             Err(e) => {
-                Err(AccountError::Network(format!("failed to fetch account data: {}", e).to_string()))
+                Err(Error::Network(format!("failed to fetch account data: {}", e).to_string()))
             }
         }
     }
@@ -205,7 +191,7 @@ impl Account {
     }
 
     /// Returns a vector of supported features (for the [Account])
-    pub async fn get_features(&self) -> Result<Vec<Feature>, AccountError> {
+    pub async fn get_features(&self) -> Result<Vec<Feature>, Error> {
 
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "lowercase")]
@@ -238,7 +224,7 @@ impl Account {
 
                 Ok(features)
             }
-            Err(e) => Err(AccountError::Network(e.to_string()))
+            Err(e) => Err(Error::Network(e.to_string()))
         }
     }
 

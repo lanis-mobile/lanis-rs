@@ -8,21 +8,7 @@ use untis::LessonCode;
 use crate::base::account::UntisSecrets;
 use crate::utils::constants::URL;
 use crate::utils::datetime::merge_naive_date_time_to_datetime;
-
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
-pub enum Error {
-    Network(String),
-    Parse(String),
-    Html(String),
-    /// Happens if something goes wrong when logging into Untis
-    Credentials(String),
-    /// Happens if anything goes wrong while accessing the Untis API
-    UntisAPI(String),
-    /// Happens if anything goes wrong when processing Dates and/or Times
-    DateTime(String),
-    /// Happens if something goes wrong with Threads (like [tokio::task::spawn_blocking]
-    Threading(String),
-}
+use crate::Error;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum Provider {
@@ -93,7 +79,7 @@ impl Week {
         };
 
         async fn lanis(lanis_type: LanisType, client: &Client) -> Result<Week, Error> {
-            let mut week = NaiveDate::parse_from_str("01.01.1970", "%d.%m.%Y").map_err(|_| Error::Parse("failed to parse initial date".to_string()))?;
+            let mut week = NaiveDate::parse_from_str("01.01.1970", "%d.%m.%Y").map_err(|_| Error::Parsing("failed to parse initial date".to_string()))?;
             let document = get(lanis_type, client).await?;
 
 
@@ -181,7 +167,7 @@ impl Week {
                             continue;
                         }
 
-                        let hours = attr.unwrap().parse::<i32>().map_err(|_| Error::Parse("failed to parse rowspan as i32".to_string()))?;
+                        let hours = attr.unwrap().parse::<i32>().map_err(|_| Error::Parsing("failed to parse rowspan as i32".to_string()))?;
 
                         for lesson in column.select(&lesson_selector) {
                             let subjects = vec![lesson.text().nth(1).unwrap().replace("\n","").trim().to_string()];
@@ -252,7 +238,7 @@ impl Week {
 
                         let location = response.headers().get("Location");
                         if location == None { return Err(Error::Network("no location header".to_string())); }
-                        let location = location.unwrap().to_str().map_err(|_| Error::Parse("failed to parse location header".to_string()))?.to_string();
+                        let location = location.unwrap().to_str().map_err(|_| Error::Parsing("failed to parse location header".to_string()))?.to_string();
 
                         match client.get(format!("{}/{}", URL::TIMETABLE, location)).send().await {
                             Ok(response) => {
@@ -260,7 +246,7 @@ impl Week {
                                     return Err(Error::Network(format!("HTTP error status: {}", response.status())))
                                 }
 
-                                let text = response.text().await.map_err(|_| Error::Parse("failed to parse response text".to_string()))?;
+                                let text = response.text().await.map_err(|_| Error::Parsing("failed to parse response text".to_string()))?;
                                 let html = Html::parse_document(&text);
 
                                 let all_selector = Selector::parse("#all").unwrap();

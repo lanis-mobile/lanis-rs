@@ -10,6 +10,7 @@ use regex::Regex;
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::multipart::Part;
+use crate::{Error, LessonUploadError};
 use crate::utils::crypt::{decrypt_lanis_encoded_tags, encrypt_lanis_data};
 use crate::utils::datetime::date_time_string_to_datetime;
 
@@ -136,16 +137,16 @@ impl Lesson {
      *  Sets the data for a lesson. This data includes: <br>
      *  Entries history, marks and class tests
      */
-    pub async fn set_data(&mut self, account: &Account) -> Result<(), String> {
+    pub async fn set_data(&mut self, account: &Account) -> Result<(), Error> {
         let client = &account.client;
 
         match client.get(format!("{}{}", URL::BASE, &self.url)).send().await {
             Ok(response) => {
                 if !response.status().is_success() {
-                    return Err(format!("Failed request with status code: {}", response.status()));
+                    return Err(Error::Network(format!("Failed request with status code: {}", response.status())));
                 }
 
-                let document = decrypt_lanis_encoded_tags(response.text().await.unwrap().as_str(), &account.key_pair.public_key_string).await?;
+                let document = decrypt_lanis_encoded_tags(response.text().await.unwrap().as_str(), &account.key_pair.public_key_string).await;
                 let document = Html::parse_document(&document);
 
                 let mut history: Vec<LessonEntry> = vec![];
@@ -276,7 +277,7 @@ impl Lesson {
                                     let text = text.replace("bis ", "").trim().to_string();
                                     let text = text.replace("um", "").trim().to_string();
 
-                                    date_time_string_to_datetime(text.as_str(), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc()
+                                    date_time_string_to_datetime(text.as_str(), "02:00:00").map_err(|e| Error::DateTime(format!("failed to convert date to DateTime '{:?}'", e)))?.to_utc()
                                 };
                                 let id = url.split("&id=").last().unwrap().parse::<i32>().unwrap();
 
@@ -335,7 +336,7 @@ impl Lesson {
                     };
 
                     let date = row.child_elements().nth(0).unwrap().text().collect::<String>().split("\n").nth(0).unwrap().trim().to_string();
-                    let date = date_time_string_to_datetime(date.as_str(), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc();
+                    let date = date_time_string_to_datetime(date.as_str(), "02:00:00").map_err(|e| Error::DateTime(format!("failed to convert date to DateTime '{:?}'", e)))?.to_utc();
                     let school_hours = {
                         let mut school_hours = vec![];
 
@@ -410,7 +411,7 @@ impl Lesson {
                 for row in marks_table_rows {
                     if row.child_elements().count() == 3 {
                         let name = row.child_elements().nth(0).unwrap().text().collect::<String>().trim().to_string();
-                        let date = date_time_string_to_datetime(&format!("{}{}", row.child_elements().nth(1).unwrap().text().collect::<String>().trim().split_once(",").unwrap_or_default().1.trim(), chrono::Local::now().year()), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc();
+                        let date = date_time_string_to_datetime(&format!("{}{}", row.child_elements().nth(1).unwrap().text().collect::<String>().trim().split_once(",").unwrap_or_default().1.trim(), chrono::Local::now().year()), "02:00:00").map_err(|e| Error::DateTime(format!("failed to convert date to DateTime '{:?}'", e)))?.to_utc();
                         let mark = row.child_elements().nth(2).unwrap().text().collect::<String>().trim().to_string();
                         let comment = match row.next_sibling_element() {
                             Some(element) => {
@@ -500,14 +501,14 @@ impl Lesson {
                 Ok(())
             }
             Err(error) => {
-                Err(format!("Failed to get '{}{}' with error: {}", URL::BASE, &self.url, error))
+                Err(Error::Network(format!("Failed to get '{}{}' with error: {}", URL::BASE, &self.url, error)))
             }
         }
     }
 }
 
 impl Homework {
-    pub async fn set_homework(&mut self, state: bool, course_id: i32, entry_id: i32, client: &Client) -> Result<(), String> {
+    pub async fn set_homework(&mut self, state: bool, course_id: i32, entry_id: i32, client: &Client) -> Result<(), Error> {
         match client.post(URL::MEIN_UNTERRICHT)
             .header("X-Requested-With", "XMLHttpRequest")
             .form(&[("a", "sus_homeworkDone"), ("entry", entry_id.to_string().as_str()), ("id", course_id.to_string().as_str()), ("b", { if state { "done" } else { "undone" } })])
@@ -518,33 +519,17 @@ impl Homework {
                     self.completed = state;
                     Ok(())
                 } else {
-                    Err(format!("Failed to set homework! Got instead of '1' '{}' as response", text))
+                    Err(Error::ServerSide(format!("Failed to set homework! Got instead of '1' '{}' as response", text)))
                 }
             } Err(e) => {
-                Err(format!("Failed to set homework with error: {}", e))
+                Err(Error::Network(format!("Failed to set homework with error: {}", e)))
             }
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum LessonUploadError {
-    /// Happens if 'info' in [LessonUpload] is None
-    NoInfo,
-    /// Happens if course_id or entry_id in [LessonUpload] is None
-    /// This can happen if no UploadForm exists
-    NoDetailedInfo,
-    Network(String),
-    WrongPassword,
-    EncryptionFailed(String),
-    /// Deletion was not possible (Server Side)
-    DeletionFailed,
-    Unknown,
-    UnknownServerError,
-}
-
 impl LessonUpload {
-    pub async fn get_info(&self, client: &Client) -> Result<LessonUploadInfo, String> {
+    pub async fn get_info(&self, client: &Client) -> Result<LessonUploadInfo, Error> {
         match client.get(&self.url).send().await {
             Ok(response) => {
                 let document = Html::parse_document(&response.text().await.unwrap());
@@ -644,7 +629,7 @@ impl LessonUpload {
                     let href = a.value().attr("href").unwrap();
                     let name = a.text().collect::<String>().trim().to_string();
                     let url = format!("{}{}", URL::BASE, href);
-                    let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string().parse::<i32>().map_err(|_| "Failed to parse index of file as i32")?;
+                    let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string().parse::<i32>().map_err(|_| Error::Parsing("Failed to parse index of file as i32".to_string()))?;
                     let comment = {
                         match element.children().nth(9) {
                             Some(node) => {
@@ -694,7 +679,7 @@ impl LessonUpload {
                             let name = a.text().collect::<String>().trim().to_string();
                             let url = format!("{}{}", URL::BASE, href);
                             let person = element.select(&person_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
-                            let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string().parse::<i32>().map_err(|_| "Failed to parse index of file as i32")?;
+                            let index = file_index_re.captures(&href).unwrap().get(1).unwrap().as_str().to_string().parse::<i32>().map_err(|_| Error::Parsing("Failed to parse index of file as i32".to_string()))?;
 
                             public_files.push(LessonUploadInfoPublicFile{
                                 name,
@@ -711,12 +696,12 @@ impl LessonUpload {
                 let end = end.await;
                 let automatic_deletion = automatic_deletion.await;
 
-                async fn parse_date_time(s: String) -> Result<DateTime<Utc>, String> {
+                async fn parse_date_time(s: String) -> Result<DateTime<Utc>, Error> {
                     let ymd = format!("{}", &s.split(" ").nth(2).unwrap());
                     let hms = format!("{}:{}", s.split(" ").nth(3).unwrap(), "00");
 
                     let result = date_time_string_to_datetime(&ymd, &hms);
-                    Ok(result.map_err(|_| "failed to convert lanis time to cron time".to_string())?.to_utc())
+                    Ok(result.map_err(|_| Error::DateTime("failed to convert lanis time to cron time".to_string()))?.to_utc())
                 }
 
                 let start = {
@@ -758,20 +743,20 @@ impl LessonUpload {
                 Ok(result)
             }
             Err(e) => {
-                Err(format!("Failed to fetch upload info with error: '{}'", e))
+                Err(Error::Network(format!("Failed to fetch upload info with error: '{}'", e)))
             }
         }
     }
 
     /// Takes a vector of file paths (max. 5) and uploads these files to Lanis. <br>
     /// [LessonUpload::get_info] must be called before calling this function
-    pub async fn upload(&self, files: Vec<&Path>, client: &Client) -> Result<Vec<LessonUploadFileStatus>, String> {
+    pub async fn upload(&self, files: Vec<&Path>, client: &Client) -> Result<Vec<LessonUploadFileStatus>, Error> {
         if self.info.is_none() {
-            return Err("No info found in lessons!".to_string());
+            return Err(Error::Parsing("No info found in lessons!".to_string()));
         }
 
         if files.is_empty() {
-            return Err("Please specify a file path to upload!".to_string())
+            return Err(Error::Parsing("No files found in lessons!".to_string()));
         }
 
         let upload_info = self.info.clone().unwrap();
@@ -844,7 +829,7 @@ impl LessonUpload {
                for status_message in status_message_group.select(&ul_ui_selector) {
                    let name = status_message.select(&b_selector).nth(0);
                    if name.is_none() {
-                       return Err("Failed to upload any file!".to_string());
+                       return Err(Error::ServerSide("Failed to upload any file!".to_string()));
                    }
                    let status = status_message.select(&span_label_selector).nth(0).unwrap().text().collect::<String>().trim().to_string();
 
@@ -885,24 +870,24 @@ impl LessonUpload {
                Ok(status_messages)
            }
            Err(e) => {
-               Err(format!("Failed to upload file with error: '{}'", e.to_string()))
+               Err(Error::Network(format!("Failed to upload file with error: '{}'", e.to_string())))
            }
        }
     }
 
     /// Deletes an already uploaded File (Takes a file id)
-    pub async fn delete(&self, file: &i32, account: &Account) -> Result<(), LessonUploadError> {
+    pub async fn delete(&self, file: &i32, account: &Account) -> Result<(), Error> {
         let client = &account.client;
         let encrypted_password = encrypt_lanis_data(account.secrets.password.as_bytes(), &account.key_pair.public_key_string);
 
         if self.info.is_none() {
-            return Err(LessonUploadError::NoInfo);
+            return Err(Error::LessonUploadError(LessonUploadError::NoInfo));
         }
 
         let info = self.info.clone().unwrap();
 
         if info.course_id.is_none() || info.entry_id.is_none() {
-            return Err(LessonUploadError::NoInfo);
+            return Err(Error::LessonUploadError(LessonUploadError::NoInfo));
         }
 
         let course_id = info.course_id.clone().unwrap();
@@ -920,28 +905,28 @@ impl LessonUpload {
             ("pw", &encrypted_password)]).send().await {
             Ok(response) => {
                 match response.text().await.unwrap().parse::<i32>().unwrap() {
-                    -2 => Err(LessonUploadError::DeletionFailed),
-                    -1 => Err(LessonUploadError::WrongPassword),
-                    0 => Err(LessonUploadError::UnknownServerError),
+                    -2 => Err(Error::LessonUploadError(LessonUploadError::DeletionFailed)),
+                    -1 => Err(Error::LessonUploadError(LessonUploadError::WrongPassword)),
+                    0 => Err(Error::LessonUploadError(LessonUploadError::UnknownServerError)),
                     1 => Ok(()),
-                    _ => Err(LessonUploadError::Unknown),
+                    _ => Err(Error::LessonUploadError(LessonUploadError::Unknown)),
                 }
             }
             Err(e) => {
-                Err(LessonUploadError::Network(e.to_string()))
+                Err(Error::LessonUploadError(LessonUploadError::Network(e.to_string())))
             }
         }
     }
 }
 
-pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
+pub async fn get_lessons(account: &Account) -> Result<Lessons, Error> {
     let client = &account.client;
     let unix_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis();
     match client.get(URL::BASE.to_owned() + &format!("meinunterricht.php?cacheBreaker={}", unix_time)).send().await {
         Ok(response) => {
             match response.text().await {
                 Ok(response) => {
-                    let response = decrypt_lanis_encoded_tags(&response, &account.key_pair.public_key_string).await?;
+                    let response = decrypt_lanis_encoded_tags(&response, &account.key_pair.public_key_string).await;
                     let document = Html::parse_document(&response);
                     let lesson_folders_selector = Selector::parse("#mappen").unwrap();
                     let row_selector = Selector::parse(".row").unwrap();
@@ -995,7 +980,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
 
                                 let topic_date_selector = Selector::parse(".datum").unwrap();
                                 let topic_date = collect_text(school_class.select(&topic_date_selector).next()).unwrap_or("".to_string());
-                                let topic_date = date_time_string_to_datetime(topic_date.as_str(), "02:00:00").map_err(|e| format!("failed to convert date to DateTime '{:?}'", e))?.to_utc();
+                                let topic_date = date_time_string_to_datetime(topic_date.as_str(), "02:00:00").map_err(|e| Error::DateTime(format!("failed to convert date to DateTime '{:?}'", e)))?.to_utc();
 
                                 let course_url_selector = Selector::parse("td>h3>a").unwrap();
                                 let course_url = school_class.select(&course_url_selector).next().map(|x| x.value().attr("href").unwrap().to_string().trim().to_string()).unwrap_or("".to_string());
@@ -1086,19 +1071,19 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, String> {
 
                             Ok(lessons)
                         } else {
-                            Err("Failed to select rows from lesson folders".to_string())
+                            Err(Error::Parsing("Failed to select rows from lesson folders".to_string()))
                         }
                     } else {
-                        Err("Failed to select lesson folders".to_string())
+                        Err(Error::Parsing("Failed to select lesson folders".to_string()))
                     }
                 }
                 Err(e) => {
-                    Err(format!("Failed converting response into text: {}", e))
+                    Err(Error::Parsing(format!("Failed converting response into text: {}", e)))
                 }
             }
         }
         Err(e) => {
-            Err(format!("Failed to fetch lessons from '{}?cacheBreaker={}':\n{}", URL::BASE, unix_time, e))
+            Err(Error::Network(format!("Failed to fetch lessons from '{}?cacheBreaker={}':\n{}", URL::BASE, unix_time, e)))
         }
     }
 }
