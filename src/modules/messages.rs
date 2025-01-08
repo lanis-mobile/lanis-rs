@@ -1,3 +1,4 @@
+use std::fmt::format;
 use chrono::{DateTime, Utc};
 use markup5ever::interface::TreeSink;
 use reqwest::{Client, Response};
@@ -49,10 +50,12 @@ impl ConversationOverview {
         let i_selector = Selector::parse("i.fas").unwrap();
         let i_selector_teacher = Selector::parse("i.fas.fa-user").unwrap();
         let i_selector_student = Selector::parse("i.fas.fa-child").unwrap();
+        let i_selector_parent = Selector::parse("i.fas.fa-user-circle").unwrap();
 
-        let account_type = { // TODO: Add Parent accounts
+        let account_type = {
             if html.select(&i_selector_student).nth(0).is_some() { AccountType::Student }
             else if html.select(&i_selector_teacher).nth(0).is_some() { AccountType::Teacher }
+            else if html.select(&i_selector_parent).nth(0).is_some() { AccountType::Parent  }
             else { AccountType::Unknown }
         };
 
@@ -444,4 +447,17 @@ pub struct Message {
     pub own: bool,
     /// The content of this [Message]
     pub content: String,
+}
+
+/// Returns `true` if the use can freely choose what type a conversation should have
+async fn can_choose_type(client: &Client) -> Result<bool, ConversationError> {
+    match client.get(URL::MESSAGES).send().await {
+        Ok(response) => {
+            let html = Html::parse_document(&response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to parse message '{:?}'", e)))?);
+            let options_selector = Selector::parse("#MsgOptions").unwrap();
+
+            Ok(html.select(&options_selector).nth(0).is_some())
+        }
+        Err(e) => Err(ConversationError::Network(format!("failed to get message page '{e}'"))),
+    }
 }
