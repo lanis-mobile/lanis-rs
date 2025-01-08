@@ -26,7 +26,7 @@ mod tests {
     use std::path::Path;
     use stopwatch_rs::StopWatch;
     use crate::modules::file_storage::FileStoragePage;
-    use crate::modules::messages::ConversationOverview;
+    use crate::modules::messages::{can_choose_type, search_receiver, ConversationOverview};
     use crate::utils::crypt::{decrypt_any, encrypt_any};
 
     #[tokio::test]
@@ -374,6 +374,17 @@ mod tests {
             let ms = stopwatch.split().split.as_millis();
             println!("Took {}ms", ms);
             println!("{:#?}", conversation);
+        }
+
+        println!("Can choose type: {}", can_choose_type(&account.client).await.unwrap());
+
+        if let Ok(query) = env::var("MESSAGES_RECEIVER_QUERY") {
+            print!("Searching for receiver... ");
+            let mut stopwatch = StopWatch::start();
+            let results = search_receiver(&query, &account.client).await.unwrap();
+            let ms = stopwatch.split().split.as_millis();
+            println!("Took {}ms", ms);
+            println!("Search results: {:#?}", results);
         }
 
         println!()

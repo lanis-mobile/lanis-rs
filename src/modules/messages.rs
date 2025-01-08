@@ -1,4 +1,3 @@
-use std::fmt::format;
 use chrono::{DateTime, Utc};
 use markup5ever::interface::TreeSink;
 use reqwest::{Client, Response};
@@ -302,7 +301,11 @@ impl ConversationOverview {
                     let mut messages = Vec::new();
                     messages.push({
                         let id = json.id.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse message id '{}'", e)))?;
-                        let date_split = json.date.split_once(" ").unwrap_or_default();
+                        let mut date_split = json.date.split_once(" ").unwrap_or_default();
+                        let mut date = date_split.0.to_string();
+                        if date_split.0 == "heute" { let new_date = format!("{}", chrono::Local::now().date_naive().format("%d.%m.%Y")); date = new_date }
+                        date_split.0 = date.as_str();
+                        println!("{} {}", date_split.0, &format!("{}:00", date_split.1));
                         let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| ConversationError::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?.to_utc();
                         let author = {
                             let id = Some(json.sender.parse().map_err(|e| ConversationError::Parsing(format!("failed to parse sender id '{}'", e)))?);
@@ -450,7 +453,7 @@ pub struct Message {
 }
 
 /// Returns `true` if the use can freely choose what type a conversation should have
-async fn can_choose_type(client: &Client) -> Result<bool, ConversationError> {
+pub async fn can_choose_type(client: &Client) -> Result<bool, ConversationError> {
     match client.get(URL::MESSAGES).send().await {
         Ok(response) => {
             let html = Html::parse_document(&response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to parse message '{:?}'", e)))?);
@@ -459,5 +462,58 @@ async fn can_choose_type(client: &Client) -> Result<bool, ConversationError> {
             Ok(html.select(&options_selector).nth(0).is_some())
         }
         Err(e) => Err(ConversationError::Network(format!("failed to get message page '{e}'"))),
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub struct Receiver {
+    pub id: String,
+    pub name: String,
+    pub account_type: AccountType,
+}
+
+/// Searches for a person using the provided query and returns the results as a [Vec] of [Receiver]'s <br> <br>
+///
+/// NOTE: Everything under 2 chars will return an empty [Vec<Receiver>]
+pub async fn search_receiver(query: &str, client: &Client) -> Result<Vec<Receiver>, ConversationError> {
+    if query.len() < 2 { return Ok(Vec::new()) }
+    
+    match client.get(URL::MESSAGES).query(&[("a", "searchRecipt"), ("q", query)]).send().await {
+        Ok(response) => {
+            let text = response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to parse response as text '{:?}'", e)))?;
+            if text.contains("\"items\":null") { return Ok(Vec::new()) }
+
+            #[derive(Serialize, Deserialize)]
+            struct JSON {
+                items: Vec<JSONItem>
+            }
+
+            #[derive(Serialize, Deserialize)]
+            struct JSONItem {
+                #[serde(rename = "type")]
+                account_type: String,
+                id: String,
+                text: String,
+            }
+
+            let json: JSON = serde_json::from_str(&text).map_err(|e| ConversationError::Parsing(format!("failed to parse response as JSON: {}", e)))?;
+
+            let mut result = Vec::new();
+
+            for item in json.items {
+                let id = item.id;
+                let name = item.text;
+                let account_type = match item.account_type.as_str() { // TODO: Parent accounts
+                    "sus" => AccountType::Student,
+                    "lul" => AccountType::Teacher,
+                    _ => AccountType::Unknown
+                };
+
+                result.push(Receiver { id, name, account_type })
+            }
+
+            Ok(result)
+        }
+        Err(e) => Err(ConversationError::Network(format!("failed to perform a search query '{e}'"))),
     }
 }
