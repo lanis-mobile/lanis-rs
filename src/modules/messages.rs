@@ -425,6 +425,69 @@ pub struct Conversation {
     pub messages: Vec<Message>,
 }
 
+impl Conversation {
+    /// Reply to a [Conversation] (send a message) <br>
+    /// `message` supports lanis formatting (see [here](https://support.schulportal.hessen.de/knowledgebase.php?article=664) for more info) <br>
+    /// returns the UID of the new message (None if new message failed)
+    pub async fn reply(&self, message: &str, client: &Client, key_pair: &LanisKeyPair) -> Result<Option<String>, ConversationError> {
+        #[derive(Serialize, Deserialize)]
+        struct JSON {
+            to: String,
+            #[serde(rename = "groupOnly")]
+            group_only: String,
+            #[serde(rename = "privateAnswerOnly")]
+            private_answers_only: String,
+            message: String,
+            #[serde(rename = "replyToMsg")]
+            replay_to_message: String,
+        }
+
+        let sender_id = match self.messages.get(0) {
+            Some(msg) => match msg.author.id {
+                Some(id) => id,
+                None => return Err(ConversationError::Parsing(String::from("no author")))
+            },
+            None => return Err(ConversationError::Parsing(String::from("no messages")))
+        };
+
+        fn bool_to_german(bool: &bool) -> String {
+            if *bool {
+                "ja".to_string()
+            } else {
+                "nein".to_string()
+            }
+        }
+
+        let json = JSON {
+            to: sender_id.to_string(),
+            group_only: bool_to_german(&self.group_chat),
+            private_answers_only: bool_to_german(&self.only_private_answers),
+            message: message.to_string(),
+            replay_to_message: self.uid.to_owned()
+        };
+
+        let json_string = serde_json::to_string(&json).map_err(|e| ConversationError::Parsing(format!("failed to serialize message '{e}'")))?;
+        let enc_json_string = encrypt_lanis_data(json_string.as_bytes(), &key_pair.public_key_string).await;
+        
+        match client.post(URL::MESSAGES).form(&[("a", "reply"), ("c", enc_json_string.as_str())]).send().await {
+            Ok(response) => {
+                #[derive(Serialize, Deserialize)]
+                struct ResponseJson {
+                    back: bool,
+                    /// UID
+                    id: String,
+                }
+
+                let text = response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to parse response as text: {}", e)))?;
+                let json: ResponseJson = serde_json::from_str(&text).map_err(|e| ConversationError::Parsing(format!("failed to deserialize JSON: {}", e)))?;
+
+                if !json.back { return Ok(None) }
+                Ok(Some(json.id))
+            }
+            Err(e) => return Err(ConversationError::Network(format!("failed to send message '{e}'")))
+        }
+    }
+}
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct Participant {
