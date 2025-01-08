@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use chrono::{DateTime, Utc};
 use markup5ever::interface::TreeSink;
 use reqwest::{Client, Response};
@@ -452,6 +453,41 @@ pub struct Message {
     pub content: String,
 }
 
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub enum ConversationType {
+    /// No answers
+    NoAnswersAllowed,
+    /// Answers only to sender
+    PrivateAnswersOnly,
+    /// Answers to everyone
+    GroupOnly,
+    /// Private messages among themselves possible
+    OpenChat
+}
+
+impl ConversationType {
+    /// Converts the enum to a String format that lanis expects
+    pub fn to_lanis_string(&self) -> String {
+        match &self {
+            ConversationType::NoAnswersAllowed => String::from("noAnswerAllowed"),
+            ConversationType::PrivateAnswersOnly => String::from("privateAnswerOnly"),
+            ConversationType::GroupOnly => String::from("groupOnly"),
+            ConversationType::OpenChat => String::from("openChat"),
+        }
+    }
+}
+
+impl Display for ConversationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            ConversationType::NoAnswersAllowed => write!(f, "NoAnswersAllowed"),
+            ConversationType::PrivateAnswersOnly => write!(f, "PrivateAnswersOnly"),
+            ConversationType::GroupOnly => write!(f, "GroupOnly"),
+            ConversationType::OpenChat => write!(f, "OpenChat")
+        }
+    }
+}
+
 /// Returns `true` if the use can freely choose what type a conversation should have
 pub async fn can_choose_type(client: &Client) -> Result<bool, ConversationError> {
     match client.get(URL::MESSAGES).send().await {
@@ -517,3 +553,57 @@ pub async fn search_receiver(query: &str, client: &Client) -> Result<Vec<Receive
         Err(e) => Err(ConversationError::Network(format!("failed to perform a search query '{e}'"))),
     }
 }
+
+/// ### Creates a new Conversation
+/// Receivers can be obtained with [search_receiver] <br>
+/// Receivers should be one or higher
+/// Text is the content of the message and supports lanis formatting (see [here](https://support.schulportal.hessen.de/knowledgebase.php?article=664)) <br>
+/// Text should not be empty <br> <br>
+///
+/// returns the new UID of the Conversation if creation was successful
+pub async fn create_conversation(receiver: &Vec<Receiver>, subject: &str, text: &str, client: &Client, key_pair: &LanisKeyPair) -> Result<Option<String>, ConversationError> {
+    #[derive(Serialize, Deserialize)]
+    struct JSONItem {
+        name: String,
+        value: String,
+    }
+
+    let mut json_vec = Vec::new();
+    json_vec.push(JSONItem {
+        name: String::from("subject"),
+        value: String::from(subject),
+    });
+    json_vec.push(JSONItem {
+        name: String::from("text"),
+        value: String::from(text),
+    });
+
+    for receiver in receiver {
+        json_vec.push(JSONItem {
+            name: String::from("to[]"), // This should be a crime
+            value: receiver.id.to_owned(),
+        })
+    }
+
+    let json = serde_json::to_string(&json_vec).map_err(|e| ConversationError::Parsing(format!("failed to serialize JSON: {}", e)))?;
+    let enc_json = encrypt_lanis_data(json.as_bytes(), &key_pair.public_key_string).await.map_err(|e| ConversationError::Crypto(format!("failed to encrypt json: {}", e)))?;
+    
+    match client.post(URL::MESSAGES).form(&[("a", "newmessage"), ("c", enc_json.as_str())]).send().await {
+        Ok(response) => {
+            #[derive(Serialize, Deserialize)]
+            struct ResponseJson {
+                back: bool,
+                /// UID
+                id: String,
+            }
+
+            let text = response.text().await.map_err(|e| ConversationError::Parsing(format!("failed to parse response as text: {}", e)))?;
+            let json: ResponseJson = serde_json::from_str(&text).map_err(|e| ConversationError::Parsing(format!("failed to deserialize JSON: {}", e)))?;
+
+            if !json.back { return Ok(None) }
+            Ok(Some(json.id))
+        }
+        Err(e) => Err(ConversationError::Network(format!("failed to create conversation '{e}'"))),
+    }
+}
+

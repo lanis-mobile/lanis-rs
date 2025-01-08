@@ -26,7 +26,7 @@ mod tests {
     use std::path::Path;
     use stopwatch_rs::StopWatch;
     use crate::modules::file_storage::FileStoragePage;
-    use crate::modules::messages::{can_choose_type, search_receiver, ConversationOverview};
+    use crate::modules::messages::{can_choose_type, create_conversation, search_receiver, ConversationOverview};
     use crate::utils::crypt::{decrypt_any, encrypt_any};
 
     #[tokio::test]
@@ -385,6 +385,17 @@ mod tests {
             let ms = stopwatch.split().split.as_millis();
             println!("Took {}ms", ms);
             println!("Search results: {:#?}", results);
+
+            if let Ok(person_pos) = env::var("MESSAGES_RECEIVER_POS_CREATE").unwrap().parse::<usize>() {
+                let content = fs::read_to_string("test_file.txt").unwrap_or("Test Message".to_string());
+                print!("Creating conversation... ");
+                let mut stopwatch = StopWatch::start();
+                let result = create_conversation(&vec![results.get(person_pos).unwrap().to_owned()], "Test Message", &content, &account.client, &account.key_pair).await.unwrap();
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+                assert_eq!(result.is_some(), true);
+                println!("UID of new Conversation: {}", result.unwrap());
+            }
         }
 
         println!()

@@ -170,12 +170,7 @@ pub(crate) async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> Resu
         let salted = "Salted__".to_string();
         let salted = salted.as_bytes();
 
-        let mut buf = [0; 256];
-        let encrypted = encryptor.encrypt_padded_b2b_mut::<Pkcs7>(&data, &mut buf);
-        if encrypted.is_err() {
-            return Err(format!("Failed to encrypt data with error: '{}'", encrypted.unwrap_err()));
-        }
-        let encrypted = encrypted.unwrap();
+        let encrypted = encryptor.encrypt_padded_vec_mut::<Pkcs7>(&data);
 
         let mut result: Vec<u8> = Vec::new();
         result.extend(salted);
