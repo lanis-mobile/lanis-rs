@@ -386,7 +386,8 @@ mod tests {
             println!("Took {}ms", ms);
             println!("Search results: {:#?}", results);
 
-            if let Ok(person_pos) = env::var("MESSAGES_RECEIVER_POS_CREATE").unwrap().parse::<usize>() {
+            if let Ok(person_pos) = env::var("MESSAGES_RECEIVER_POS_CREATE") {
+                let person_pos = person_pos.parse::<usize>().unwrap();
                 let content = fs::read_to_string("test_file.txt").unwrap_or("Test Message".to_string());
                 print!("Creating conversation... ");
                 let mut stopwatch = StopWatch::start();

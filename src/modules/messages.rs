@@ -135,7 +135,6 @@ impl ConversationOverview {
                     }
                 }
 
-                println!("JSON: {}", dec_rows_json);
                 let json_rows = serde_json::from_str::<Vec<ConversationRowJson>>(&dec_rows_json).map_err(|e| ConversationError::Parsing(format!("failed to parse rows of decrypted json '{}'", e)))?;
                 let overviews = {
                     let mut result: Vec<ConversationOverview> = Vec::new();
@@ -184,7 +183,7 @@ impl ConversationOverview {
         let enc_uid = encrypt_lanis_data(self.uid.as_bytes(), &keys.public_key_string);
 
         let query = [("a", "read"), ("msg", self.uid.as_str())];
-        let enc_uid = enc_uid.await.map_err(|e| ConversationError::Crypto(format!("failed to encrypt uid '{}'", e)))?;
+        let enc_uid = enc_uid.await;
         let form = [("a", "read"), ("uniqid", enc_uid.as_str())];
         match client.post(URL::MESSAGES).query(&query).form(&form).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
             Ok(response) => {
@@ -586,7 +585,7 @@ pub async fn create_conversation(receiver: &Vec<Receiver>, subject: &str, text: 
     }
 
     let json = serde_json::to_string(&json_vec).map_err(|e| ConversationError::Parsing(format!("failed to serialize JSON: {}", e)))?;
-    let enc_json = encrypt_lanis_data(json.as_bytes(), &key_pair.public_key_string).await.map_err(|e| ConversationError::Crypto(format!("failed to encrypt json: {}", e)))?;
+    let enc_json = encrypt_lanis_data(json.as_bytes(), &key_pair.public_key_string).await;
     
     match client.post(URL::MESSAGES).form(&[("a", "newmessage"), ("c", enc_json.as_str())]).send().await {
         Ok(response) => {

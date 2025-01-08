@@ -910,10 +910,6 @@ impl LessonUpload {
 
         let encrypted_password = encrypted_password.await;
 
-        if encrypted_password.is_err() {
-            return Err(LessonUploadError::EncryptionFailed(encrypted_password.unwrap_err()));
-        }
-
         match client.post(URL::MEIN_UNTERRICHT).form(&[
             ("a", "sus_abgabe"),
             ("d", "delete"),
@@ -921,7 +917,7 @@ impl LessonUpload {
             ("e", &entry_id.to_string()),
             ("id", &self.id.to_string()),
             ("f", &file.to_string()),
-            ("pw", &encrypted_password.unwrap())]).send().await {
+            ("pw", &encrypted_password)]).send().await {
             Ok(response) => {
                 match response.text().await.unwrap().parse::<i32>().unwrap() {
                     -2 => Err(LessonUploadError::DeletionFailed),

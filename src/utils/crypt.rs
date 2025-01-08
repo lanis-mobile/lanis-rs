@@ -149,7 +149,7 @@ async fn get_public_key(client: &Client) -> Result<RsaPublicKey, String> {
     }
 }
 
-pub(crate) async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> Result<String, String> {
+pub(crate) async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> String {
     let salt = random::<[u8; 8]>();
 
     const KEY_SIZE: usize = 256;
@@ -182,7 +182,7 @@ pub(crate) async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> Resu
 
     let result = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, encrypted);
 
-    Ok(result)
+    result
 }
 
 pub(crate) async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) -> Result<String, String> {
