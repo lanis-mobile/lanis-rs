@@ -260,7 +260,7 @@ mod tests {
             println!("get_lessons() took {}ms", stopwatch.split().split.as_millis());
 
             let mut stopwatch = StopWatch::start();
-            for lesson in lessons.lessons.iter_mut() {
+            for lesson in lessons.iter_mut() {
                 println!("\tid: {}", lesson.id);
                 println!("\turl: {}", lesson.url);
                 println!("\tname: {}", lesson.name);
