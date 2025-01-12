@@ -51,11 +51,7 @@ impl Account {
             .build()
             .unwrap();
 
-        let key_pair = generate_lanis_key_pair(128, &client).await;
-
-        if key_pair.is_err() {
-            return Err(Error::KeyPair);
-        }
+        let key_pair = generate_lanis_key_pair(128, &client).await?;
 
         let schools = get_schools(&client).await.map_err(|e| Error::Network(e.to_string()))?;
         let school = get_school(&secrets.school_id, &schools).await.map_err(|_| Error::NoSchool(format!("No school with id {}", secrets.school_id)))?;
@@ -66,7 +62,7 @@ impl Account {
             account_type: AccountType::Unknown,
             data: BTreeMap::new(),
             features: Vec::new(),
-            key_pair: key_pair.unwrap(),
+            key_pair,
             client,
             cookie_store,
         };

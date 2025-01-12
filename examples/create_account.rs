@@ -67,7 +67,7 @@ async fn main() {
     let encrypted_secrets = account.secrets.encrypt(key).await.unwrap();
 
     // Decrypt encrypted secrets and re-login
-    let secrets = AccountSecrets::from_encrypted(encrypted_secrets.into(), key).await.unwrap();
+    let secrets = AccountSecrets::from_encrypted(&encrypted_secrets, key).await.unwrap();
 
     // Perform login
     println!("Logging in...");
