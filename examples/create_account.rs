@@ -6,7 +6,6 @@ use lanis_rs::Error;
 async fn main() {
     let account = loop {
         // Get your credentials
-
         print!("Please enter your school id: ");
         let mut school_id = String::new();
         std::io::stdin().read_line(&mut school_id).unwrap();
@@ -61,5 +60,23 @@ async fn main() {
         }
     };
     println!("Logged in successfully!");
-    println!("Your account features that are also supported by lanis-rs: {:#?}", account.features)
+    println!("Your account features that are also supported by lanis-rs: {:#?}", account.features);
+
+    // Encrypt account secrets for later to save them for example in system keyring
+    let key = b"ILikeToast12!EncryptionIsSoNice!";
+    let encrypted_secrets = account.secrets.encrypt(key).await.unwrap();
+
+    // Decrypt encrypted secrets and re-login
+    let secrets = AccountSecrets::from_encrypted(encrypted_secrets.into(), key).await.unwrap();
+
+    // Perform login
+    println!("Logging in...");
+    let account = match Account::new(secrets).await {
+        Ok(account) => account,
+        Err(e) => {
+            panic!("Error creating account: {}", e);
+        }
+    };
+    println!("Logged in successfully!");
+    println!("Your account features that are also supported by lanis-rs: {:#?}", account.features);
 }
