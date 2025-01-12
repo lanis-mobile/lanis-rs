@@ -6,7 +6,7 @@ use lanis_rs::Error;
 async fn main() {
     let account = loop {
         // Get your credentials
-        print!("Please enter your school id: ");
+        println!("Please enter your school id: ");
         let mut school_id = String::new();
         std::io::stdin().read_line(&mut school_id).unwrap();
         let school_id = match school_id.trim().parse::<i32>() {
@@ -19,7 +19,7 @@ async fn main() {
             }
         };
 
-        print!("Please enter your username: ");
+        println!("Please enter your username: ");
         let mut username = String::new();
         std::io::stdin().read_line(&mut username).unwrap();
 
@@ -29,7 +29,7 @@ async fn main() {
             .status()
             .unwrap();
 
-        print!("Enter your password: ");
+        println!("Enter your password: ");
         let mut password = String::new();
         std::io::stdin().read_line(&mut password).unwrap();
 
