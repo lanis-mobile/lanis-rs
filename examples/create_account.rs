@@ -41,8 +41,8 @@ async fn main() {
 
         let secrets = AccountSecrets::new(
             school_id,
-            username,
-            password,
+            username.trim().to_string(), // Make sure to trim when using terminal input
+            password.trim().to_string(),
         );
 
 
