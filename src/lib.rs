@@ -42,6 +42,28 @@ pub enum Error {
     FileSystem(String),
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::Network(e) => write!(f, "Error::Network({e})"),
+            Error::Parsing(e) => write!(f, "Error::Parsing({e})"),
+            Error::Crypto(e) => write!(f, "Error::Crypto({e})"),
+            Error::Html(e) => write!(f, "Error::Html({e})"),
+            Error::Credentials(e) => write!(f, "Error::Credentials({e})"),
+            Error::UntisAPI(e) => write!(f, "Error::UntisAPI({e})"),
+            Error::DateTime(e) => write!(f, "Error::DateTime({e})"),
+            Error::Threading(e) => write!(f, "Error::Threading({e})"),
+            Error::NoSchool(e) => write!(f, "Error::NoSchool({e})"),
+            Error::KeyPair => write!(f, "Error::KeyPair"),
+            Error::Login(e) => write!(f, "Error::Login({e})"),
+            Error::SchoolNotFound(e) => write!(f, "Error::SchoolNotFound({e})"),
+            Error::LessonUploadError(e) => write!(f, "Error::LessonUploadError({e})"),
+            Error::ServerSide(e) => write!(f, "Error::ServerSide({e})"),
+            Error::FileSystem(e) => write!(f, "Error::FileSystem({e})"),
+        }
+    }
+}
+
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum LessonUploadError {
@@ -57,6 +79,21 @@ pub enum LessonUploadError {
     DeletionFailed,
     Unknown,
     UnknownServerError,
+}
+
+impl std::fmt::Display for LessonUploadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            LessonUploadError::NoInfo => write!(f, "LessonUploadError::NoInfo"),
+            LessonUploadError::NoDetailedInfo => write!(f, "LessonUploadError::NoDetailedInfo"),
+            LessonUploadError::Network(e) => write!(f, "LessonUploadError::Network({e})"),
+            LessonUploadError::WrongPassword => write!(f, "LessonUploadError::WrongPassword"),
+            LessonUploadError::EncryptionFailed(e) => write!(f, "LessonUploadError::EncryptionFailed({})", e),
+            LessonUploadError::DeletionFailed => write!(f, "LessonUploadError::DeletionFailed"),
+            LessonUploadError::Unknown => write!(f, "LessonUploadError::Unknown"),
+            LessonUploadError::UnknownServerError => write!(f, "LessonUploadError::UnknownServerError"),
+        }
+    }
 }
 
 #[cfg(test)]
