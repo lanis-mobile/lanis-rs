@@ -447,7 +447,7 @@ impl Conversation {
             visible: self.visible,
         };
 
-        Ok(self = ConversationOverview::get(&overview, client, key_pair)?)
+        Ok(*self = ConversationOverview::get(&overview, client, key_pair).await?)
     }
 
     /// Reply to a [Conversation] (send a message) <br>
