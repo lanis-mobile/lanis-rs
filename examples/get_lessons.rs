@@ -9,6 +9,15 @@ use lanis_rs::modules::lessons::get_lessons;
 async fn main() {
     // Login
     let account = account().await;
+    let account_keep_alive = account.clone();
+
+    // Keep session alive
+    tokio::spawn(async move{
+        loop {
+            account_keep_alive.prevent_logout().await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        }
+    });
 
     println!("Loading lessons...");
     let lessons = get_lessons(&account).await.unwrap();
@@ -23,8 +32,8 @@ async fn main() {
         let mut index = String::new();
         std::io::stdin().read_line(&mut index).unwrap();
         let index = match index.trim().parse::<usize>() {
-            Ok(i32) => {
-                i32
+            Ok(usize) => {
+                usize
             }
             Err(_) => {
                 println!("Your input is not a number. Please enter a number!");
@@ -43,7 +52,7 @@ async fn main() {
     let mut lesson = lessons.get(index).unwrap().to_owned();
     // Set all data of the lesson
     let _ = lesson.set_data(&account).await.unwrap();
-    // Display entire lesson
+    // Display entire raw lesson (You may do other things with this
     println!("Full lesson: {:#?}", lesson);
 }
 
