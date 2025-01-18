@@ -28,12 +28,11 @@ pub enum Error {
     /// Happens if something goes wrong with Threads (like [tokio::task::spawn_blocking]
     Threading(String),
     /// Happens if no school with the provided id is found
-    NoSchool(String),
+    SchoolNotFound(String),
     /// Happens if key_pair generation fails
     KeyPair,
-    Login(String),
-    /// Happens if a specific school couldn't be found
-    SchoolNotFound(String),
+    /// Happens if the user tried to log in to often with the same password. The [u32] contains the timeout in seconds
+    LoginTimeout(u32),
     /// Happens if anything goes wrong with uploading a file in Lessons
     LessonUploadError(LessonUploadError),
     /// Some other Error that may be an issue with the provided values or with the lanis backend
@@ -53,10 +52,9 @@ impl std::fmt::Display for Error {
             Error::UntisAPI(e) => write!(f, "Error::UntisAPI({e})"),
             Error::DateTime(e) => write!(f, "Error::DateTime({e})"),
             Error::Threading(e) => write!(f, "Error::Threading({e})"),
-            Error::NoSchool(e) => write!(f, "Error::NoSchool({e})"),
-            Error::KeyPair => write!(f, "Error::KeyPair"),
-            Error::Login(e) => write!(f, "Error::Login({e})"),
             Error::SchoolNotFound(e) => write!(f, "Error::SchoolNotFound({e})"),
+            Error::KeyPair => write!(f, "Error::KeyPair"),
+            Error::LoginTimeout(e) => write!(f, "Error::LoginTimeout({e})"),
             Error::LessonUploadError(e) => write!(f, "Error::LessonUploadError({e})"),
             Error::ServerSide(e) => write!(f, "Error::ServerSide({e})"),
             Error::FileSystem(e) => write!(f, "Error::FileSystem({e})"),

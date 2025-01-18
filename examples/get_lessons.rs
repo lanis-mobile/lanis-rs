@@ -96,7 +96,8 @@ async fn account() -> Account {
                 match e {
                     Error::Credentials(_) => println!("Invalid credentials! Please try again."),
                     Error::SchoolNotFound(_) => println!("School not found! Please try again."),
-                    _ => println!("Something went wrong while trying to login. Please try again."),
+                    Error::LoginTimeout(t) => println!("Login timeout! Please try again in {t}s."),
+                    _ => println!("Something went wrong while trying to login. Please try again. {e}"),
                 }
             }
         }
