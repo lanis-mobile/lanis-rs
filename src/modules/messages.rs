@@ -293,7 +293,6 @@ impl ConversationOverview {
                         let mut date = date_split.0.to_string();
                         if date_split.0 == "heute" { let new_date = format!("{}", chrono::Local::now().date_naive().format("%d.%m.%Y")); date = new_date }
                         date_split.0 = date.as_str();
-                        println!("{} {}", date_split.0, &format!("{}:00", date_split.1));
                         let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| Error::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?.to_utc();
                         let author = {
                             let id = Some(json.sender.parse().map_err(|e| Error::Parsing(format!("failed to parse sender id '{}'", e)))?);
@@ -310,6 +309,8 @@ impl ConversationOverview {
 
                         let own = json.own.to_owned();
                         let content = json.content.to_owned();
+                        let html_content = Html::parse_document(&format!("<body>{}</body>", content));
+                        let content = html_content.root_element().text().collect::<String>().trim().to_owned();
 
                         Message { id, date, author, own, content }
                     });
@@ -324,10 +325,9 @@ impl ConversationOverview {
 
                 let messages = parse_messages(&decrypted_json_message_field)?;
 
-                async fn parse_participants(messages: &Vec<Message>, receivers: &Vec<Participant>, sender: &Participant) -> Result<Vec<Participant>, Error> {
+                async fn parse_participants(messages: &Vec<Message>, receivers: &Vec<Participant>) -> Result<Vec<Participant>, Error> {
                     let mut participants = Vec::new();
                     participants.append(receivers.to_owned().as_mut());
-                    participants.push(sender.to_owned());
 
                     for message in messages {
                         if !participants.contains(&message.author) {
@@ -338,7 +338,7 @@ impl ConversationOverview {
                     Ok(participants)
                 }
 
-                let participants = parse_participants(&messages, &self.receiver, &self.sender).await?;
+                let participants = parse_participants(&messages, &self.receiver).await?;
 
                 let id = self.id.to_owned();
                 let uid = self.uid.to_owned();
@@ -359,9 +359,18 @@ impl ConversationOverview {
                 let only_private_answers = match_german_string_bool(&decrypted_json_message_field.private_answer_only).await?;
                 let can_reply = !match_german_string_bool(&decrypted_json_message_field.no_answer_allowed).await?;
 
-                let amount_participants = decrypted_json_message_field.stats.participants;
-                let amount_teachers = decrypted_json_message_field.stats.supervisors;
-                let amount_parents = decrypted_json_message_field.stats.parents;
+                let mut amount_students = decrypted_json_message_field.stats.participants;
+                let mut amount_teachers = decrypted_json_message_field.stats.supervisors;
+                let mut amount_parents = decrypted_json_message_field.stats.parents;
+
+                match self.sender.account_type {
+                    AccountType::Student => amount_students += 1,
+                    AccountType::Teacher => amount_teachers += 1,
+                    AccountType::Parent => amount_parents += 1,
+                    AccountType::Unknown => ()
+                }
+
+                let amount_participants = amount_students + amount_teachers + amount_parents;
 
                 let visible = self.visible;
                 let read = self.read;
@@ -385,6 +394,7 @@ impl ConversationOverview {
                     can_reply,
 
                     amount_participants,
+                    amount_students,
                     amount_teachers,
                     amount_parents,
 
@@ -419,9 +429,11 @@ pub struct Conversation {
     /// Does the [Conversation] allow replies
     pub can_reply: bool,
 
-    /// How many participants are in the [Conversation] <br> <br>
+    /// How many participants are in the [Conversation]
     pub amount_participants: i32,
-    /// How many teachers are in the [Conversation] <br> <br>
+    /// How many students / other are in the [Conversation]
+    pub amount_students: i32,
+    /// How many teachers are in the [Conversation]
     /// Note: technically these are supervisors but teachers are as far as I know always supervisors
     pub amount_teachers: i32,
     /// How many parents are in the [Conversation]
@@ -486,7 +498,7 @@ impl Conversation {
             to: sender_id.to_string(),
             group_only: bool_to_german(&self.group_chat),
             private_answers_only: bool_to_german(&self.only_private_answers),
-            message: message.to_string(),
+            message: message.trim().to_string(),
             replay_to_message: self.uid.to_owned()
         };
 
