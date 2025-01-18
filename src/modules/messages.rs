@@ -14,7 +14,6 @@ pub struct ConversationOverview {
     pub id: i32,
     pub uid: String,
     pub sender: Participant,
-    pub sender_short: String,
     pub receiver: Vec<Participant>,
     pub subject: String,
     pub date_time: DateTime<Utc>,
@@ -99,7 +98,6 @@ impl ConversationOverview {
                         let mut sender = ConversationOverview::parse_participant(&json_row.sender_name)?;
                         let sender_id = json_row.sender.parse::<i32>().map_err(|e| Error::Parsing(format!("failed to parse sender as i32 '{}'", e)))?;
                         sender.id = Some(sender_id);
-                        let sender_short = ConversationOverview::parse_name(&json_row.kuerzel)?;
                         let receiver = {
                             let mut result = Vec::new();
                             for receiver in &json_row.empf {
@@ -116,7 +114,6 @@ impl ConversationOverview {
                             id,
                             uid,
                             sender,
-                            sender_short,
                             receiver,
                             subject,
                             date_time,
@@ -366,9 +363,22 @@ impl ConversationOverview {
                 let amount_teachers = decrypted_json_message_field.stats.supervisors;
                 let amount_parents = decrypted_json_message_field.stats.parents;
 
+                let visible = self.visible;
+                let read = self.read;
+                let date_time = self.date_time.to_owned();
+
+                let subject = self.subject.to_owned();
+                let author = self.sender.to_owned();
+
                 Ok(Conversation {
                     id,
                     uid,
+                    visible,
+                    read,
+                    date_time,
+
+                    subject,
+                    author,
 
                     group_chat,
                     only_private_answers,
@@ -393,6 +403,14 @@ impl ConversationOverview {
 pub struct Conversation {
     pub id: i32,
     pub uid: String,
+    pub visible: bool,
+    pub read: bool,
+    pub date_time: DateTime<Utc>,
+
+    /// The subject of the [Conversation]
+    pub subject: String,
+    /// The person who created this [Conversation]
+    pub author: Participant,
 
     /// Is the [Conversation] a group chat
     pub group_chat: bool,
@@ -417,6 +435,21 @@ pub struct Conversation {
 }
 
 impl Conversation {
+    pub async fn refresh(&mut self, client: &Client, key_pair: &LanisKeyPair) -> Result<(), Error> {
+        let overview = ConversationOverview {
+            id: self.id,
+            uid: self.uid.to_owned(),
+            sender: self.author.to_owned(),
+            receiver: self.participants.to_owned(),
+            subject: self.subject.to_owned(),
+            date_time: self.date_time.to_owned(),
+            read: self.read,
+            visible: self.visible,
+        };
+
+        Ok(self = ConversationOverview::get(&overview, client, key_pair)?)
+    }
+
     /// Reply to a [Conversation] (send a message) <br>
     /// `message` supports lanis formatting (see [here](https://support.schulportal.hessen.de/knowledgebase.php?article=664) for more info) <br>
     /// returns the UID of the new message (None if new message failed)
@@ -475,7 +508,7 @@ impl Conversation {
                 if !json.back { return Ok(None) }
                 Ok(Some(json.id))
             }
-            Err(e) => return Err(Error::Network(format!("failed to send message '{e}'")))
+            Err(e) => Err(Error::Network(format!("failed to send message '{e}'")))
         }
     }
 }
