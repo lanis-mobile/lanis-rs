@@ -292,6 +292,7 @@ impl ConversationOverview {
                         let mut date_split = json.date.split_once(" ").unwrap_or_default();
                         let mut date = date_split.0.to_string();
                         if date_split.0 == "heute" { let new_date = format!("{}", chrono::Local::now().date_naive().format("%d.%m.%Y")); date = new_date }
+                        if date_split.0 == "gestern" { let new_date = format!("{}", (chrono::Local::now() - chrono::Duration::days(1)).date_naive().format("%d.%m.%Y")); date = new_date }
                         date_split.0 = date.as_str();
                         let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| Error::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?.to_utc();
                         let author = {
