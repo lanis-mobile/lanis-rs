@@ -159,7 +159,7 @@ impl ConversationOverview {
     pub async fn show(&mut self, client: &Client) -> Result<bool, Error> {
         match client.post(URL::MESSAGES).form(&[("a", "recycleMsg"), ("uniqid", self.uid.as_str())]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
             Ok(response) => {
-                self.parse_recycle_response(response).await
+                Ok(!self.parse_recycle_response(response).await?)
             },
             Err(e) => Err(Error::Network(format!("failed to show conversation '{}'", e)))
         }
