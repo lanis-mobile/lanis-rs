@@ -452,10 +452,15 @@ mod tests {
 
             print!("\tGetting full conversation... ");
             let mut stopwatch = StopWatch::start();
-            let conversation = overview.get(&account.client, &account.key_pair).await.unwrap();
+            let mut conversation = overview.get(&account.client, &account.key_pair).await.unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Took {}ms", ms);
             println!("{:#?}", conversation);
+            print!("\tRefreshing conversation... ");
+            let mut stopwatch = StopWatch::start();
+            conversation.refresh(&account.client, &account.key_pair).await.unwrap();
+            let ms = stopwatch.split().split.as_millis();
+            println!("Took {}ms", ms);
         }
 
         if let Ok(reply_number) = env::var("MESSAGES_REPLY_TO") {
