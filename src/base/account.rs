@@ -4,6 +4,7 @@ use reqwest::{Client, StatusCode};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use scraper::{Html, Selector};
 use std::collections::BTreeMap;
+use std::fmt::Display;
 use std::string::String;
 use std::sync::Arc;
 use reqwest::redirect::Policy;
@@ -20,6 +21,17 @@ pub enum AccountType {
     Teacher,
     Parent,
     Unknown,
+}
+
+impl Display for AccountType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Student => write!(f, "Student"),
+            Teacher => write!(f, "Teacher"),
+            AccountType::Parent => write!(f, "Parent"),
+            AccountType::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
 
 /// Stores everything that is needed at Runtime and related to the Account
