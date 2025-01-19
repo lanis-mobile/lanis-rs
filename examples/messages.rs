@@ -30,11 +30,12 @@ async fn main() {
         for (i, overview) in overviews.iter().enumerate() {
             // Print hidden behind conversation if it is not visible
             match overview.visible {
-                false => println!("{i}: {} (Hidden)", overview.subject),
-                true => println!("{i}: {}", overview.subject)
+                true => println!("{i}: {}", overview.subject),
+                false => println!("{i}: {} (Hidden)", overview.subject)
             }
         }
         println!("{}:? Create new conversation (Action)", overviews.len());
+        println!("{}:? Show/Hide conversation (Action)", overviews.len() + 1);
 
         // Select specific conversation to display or select to create new conversation
         let index = loop {
@@ -51,7 +52,7 @@ async fn main() {
                 }
             };
 
-            if index <= overviews.len() {
+            if index <= overviews.len() + 1 {
                 break index;
             } else {
                 println!("Your input is out of bounds! Please use an input inside the bounds!");
@@ -117,6 +118,36 @@ async fn main() {
             let uid = create_conversation(&receivers, subject, text, &account.client, &account.key_pair).await.unwrap();
             if uid.is_some() { println!("Creating of conversation failed!") } else { println!("Successfully created conversation!") }
 
+        } else if index == overviews.len() + 1 { // Hide / Show conversation
+            // Select specific conversation to hide / show
+            let index = loop {
+                println!("What conversation do you want to show/hide?");
+                let mut index = String::new();
+                std::io::stdin().read_line(&mut index).unwrap();
+                let index = match index.trim().parse::<usize>() {
+                    Ok(usize) => {
+                        usize
+                    }
+                    Err(_) => {
+                        println!("Your input is not a number. Please enter a number!");
+                        continue;
+                    }
+                };
+
+                if index < overviews.len() {
+                    break index;
+                } else {
+                    println!("Your input is out of bounds! Please use an input inside the bounds!");
+                    continue;
+                };
+            };
+            println!("Performing action...");
+            let mut overview = overviews.get(index).unwrap().to_owned();
+            let result = match overview.visible {
+                true => overview.hide(&account.client).await.unwrap(), // hide the conversation
+                false => overview.show(&account.client).await.unwrap() // show the conversation
+            };
+            if result { println!("Success!") } else { println!("Failed!") }
         } else { // Participate in a conversation
             // Now display the chosen conversation
             // For this we need to get the complete conversation
