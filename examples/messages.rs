@@ -4,7 +4,7 @@ use std::process::Command;
 use reqwest::Client;
 use lanis_rs::base::account::{Account, AccountSecrets};
 use lanis_rs::Error;
-use lanis_rs::modules::messages::{Conversation, ConversationOverview};
+use lanis_rs::modules::messages::{create_conversation, search_receiver, Conversation, ConversationOverview};
 use lanis_rs::utils::crypt::LanisKeyPair;
 
 #[tokio::main]
@@ -30,8 +30,8 @@ async fn main() {
         for (i, overview) in overviews.iter().enumerate() {
             // Print hidden behind conversation if it is not visible
             match overview.visible {
-                true => println!("{i}: {} (Hidden)", overview.subject),
-                false => println!("{i}: {}", overview.subject)
+                false => println!("{i}: {} (Hidden)", overview.subject),
+                true => println!("{i}: {}", overview.subject)
             }
         }
         println!("{}:? Create new conversation (Action)", overviews.len());
@@ -60,7 +60,63 @@ async fn main() {
         };
 
         if index == overviews.len() { // Create a new conversation
-            todo!()
+            let mut receivers = Vec::new();
+            loop {
+                println!("What person do you want to message?");
+                let mut query = String::new();
+                std::io::stdin().read_line(&mut query).unwrap();
+                // Search for receivers based on the query
+                let results = search_receiver(query.trim(), &account.client).await.unwrap();
+                for (i, result) in results.iter().enumerate() {
+                    println!("{}: {} ({})", i, result.name, result.account_type)
+                }
+                println!("{}: Retry", results.len());
+
+                let index = loop {
+                    println!("Please select your person:");
+                    let mut index = String::new();
+                    std::io::stdin().read_line(&mut index).unwrap();
+                    let index = match index.trim().parse::<usize>() {
+                        Ok(usize) => {
+                            usize
+                        }
+                        Err(_) => {
+                            println!("Your input is not a number. Please enter a number!");
+                            continue;
+                        }
+                    };
+
+                    if index <= results.len() {
+                        break index;
+                    } else {
+                        println!("Your input is out of bounds! Please use an input inside the bounds!");
+                        continue;
+                    };
+                };
+
+                if index != results.len() { receivers.push(results.get(index).unwrap().to_owned()); }
+
+                println!("Do you want add another person? [y/N]");
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).unwrap();
+                if input.trim() == "y" || input.trim() == "Y" {  } else { break }
+
+            }
+
+            println!("What subject do you want for your message?");
+            let mut subject = String::new();
+            std::io::stdin().read_line(&mut subject).unwrap();
+            let subject = subject.trim();
+
+            println!("What do you want to write?");
+            let mut text = String::new();
+            std::io::stdin().read_line(&mut text).unwrap();
+            let text = text.trim();
+
+            println!("Creating conversation...");
+            let uid = create_conversation(&receivers, subject, text, &account.client, &account.key_pair).await.unwrap();
+            if uid.is_some() { println!("Creating of conversation failed!") } else { println!("Successfully created conversation!") }
+
         } else { // Participate in a conversation
             // Now display the chosen conversation
             // For this we need to get the complete conversation
@@ -68,7 +124,6 @@ async fn main() {
             interact(conversation, &account.client, &account.key_pair).await;
         }
     }
-
 }
 
 async fn interact(mut conversation: Conversation, client: &Client, lanis_key_pair: &LanisKeyPair) {
