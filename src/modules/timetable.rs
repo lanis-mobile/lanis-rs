@@ -280,16 +280,16 @@ impl Week {
 
         async fn untis(untis_secrets: UntisSecrets, week: NaiveDate) -> Result<Week, Error> {
             let school = tokio::task::spawn_blocking(move || {
-                untis::schools::get_by_name(untis_secrets.school_name.as_str()).map_err(|e| Error::Credentials(format!("failed to get school: \"{}\"", e)))
-            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: \"{}\"", e)))??;
+                untis::schools::get_by_name(untis_secrets.school_name.as_str()).map_err(|e| Error::Credentials(format!("failed to get school: '{}'", e)))
+            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: '{}'", e)))??;
 
             let mut client = tokio::task::spawn_blocking(move || {
-                school.client_login(&untis_secrets.username, &untis_secrets.password).map_err(|e| Error::Credentials(format!("failed to login: \"{}\"", e)))
-            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: \"{}\"", e)))??;
+                school.client_login(&untis_secrets.username, &untis_secrets.password).map_err(|e| Error::Credentials(format!("failed to login: '{}'", e)))
+            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: '{}'", e)))??;
 
             let timetable = tokio::task::spawn_blocking(move || {
-                client.own_timetable_for_week(&week.into()).map_err(|e| Error::UntisAPI(format!("failed to get timetable: \"{}\"", e)))
-            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: \"{}\"", e)))??;
+                client.own_timetable_for_week(&week.into()).map_err(|e| Error::UntisAPI(format!("failed to get timetable: '{}'", e)))
+            }).await.map_err(|e| Error::Threading(format!("Failed to join handle: '{}'", e)))??;
 
             let mut entries = Vec::new();
 

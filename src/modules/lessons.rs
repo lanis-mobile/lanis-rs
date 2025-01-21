@@ -12,6 +12,7 @@ use reqwest::header::HeaderMap;
 use reqwest::multipart::Part;
 use serde::{Deserialize, Serialize};
 use crate::{Error, LessonUploadError};
+use crate::utils::conversion::string_to_byte_size;
 use crate::utils::crypt::{decrypt_lanis_encoded_tags, encrypt_lanis_data};
 use crate::utils::datetime::date_time_string_to_datetime;
 
@@ -21,14 +22,14 @@ pub struct Lesson {
     pub url: String,
     pub name: String,
     pub teacher: String,
-    /// Should always be Some , if not something went wrong
+    /// Should always be Some if nothing went wrong
     pub teacher_short: Option<String>,
     pub attendances: BTreeMap<String, String>,
     /// If this is None there is no latest entry
     pub entry_latest: Option<LessonEntry>,
-    /// Will be Some(empty) if no exams are found and None if this value wasn't initialized
+    /// Will be empty if no entries are found and None if this value wasn't initialized
     pub entries: Option<Vec<LessonEntry>>,
-    /// Will be empty if no exams are found and None if this value wasn't initialized
+    /// Will be empty if no marks are found and None if this value wasn't initialized
     pub marks: Option<Vec<LessonMark>>,
     /// Will be empty if no exams are found and None if this value wasn't initialized
     pub exams: Option<Vec<LessonExam>>,
@@ -50,6 +51,7 @@ pub struct LessonEntry {
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct Attachment {
     pub name: String,
+    pub size: u64,
     pub url: String,
 }
 
@@ -180,7 +182,7 @@ impl Lesson {
                 let closed_upload_selector = Selector::parse(".btn-default").unwrap();
                 let upload_url_selector = Selector::parse("ul.dropdown-menu li a").unwrap();
                 let upload_badge_selector = Selector::parse("span.badge").unwrap();
-                let upload_small_selector = Selector::parse("small").unwrap();
+                let small_selector = Selector::parse("small").unwrap();
 
                 for row in history_table_rows {
                     let id = row.attr("data-entry").unwrap().parse::<i32>().unwrap();
@@ -234,9 +236,16 @@ impl Lesson {
 
                             for element in row.select(&files_selector).nth(0).unwrap().child_elements() {
                                 let name = element.attr("data-file").unwrap().to_string();
+                                let size = match element.select(&small_selector).nth(0) {
+                                    Some(element) => {
+                                        string_to_byte_size(element.text().collect::<String>().replace("(", "").replace(")", "").trim().to_string()).await.map_err(|e| Error::Parsing(format!("failed to parse file size: '{}'", e)))?
+                                    },
+                                    None => 0,
+                                };
                                 let url = format!("{}&f={}", url, name);
                                 attachments.push(Attachment{
                                     name,
+                                    size,
                                     url,
                                 });
                             }
@@ -267,7 +276,7 @@ impl Lesson {
                                     }
                                 };
                                 let date = {
-                                    let text = open.select(&upload_small_selector).next().unwrap().text().collect::<String>().trim().to_string();
+                                    let text = open.select(&small_selector).next().unwrap().text().collect::<String>().trim().to_string();
                                     let text = text.replace("\n", "").trim().to_string();
                                     let text = text.replace("                                                                ", "").trim().to_string();
                                     let text = text.replace("bis ", "").trim().to_string();
