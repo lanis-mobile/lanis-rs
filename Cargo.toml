@@ -3,6 +3,12 @@ name = "lanis-rs"
 version = "0.1.0"
 authors = ["Rajala1404"]
 edition = "2021"
+description = "A API for Lanis (Schulportal Hessen)"
+keywords = ["lanis", "schulportal", "scraping", "sph"]
+
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/lanis-mobile/lanis-rs"
 
 [dependencies]
 reqwest = { version = "0.12.9", features = ["json", "cookies", "multipart", "stream", "gzip"] }

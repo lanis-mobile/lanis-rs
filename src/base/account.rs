@@ -4,6 +4,7 @@ use reqwest::{Client, StatusCode};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use scraper::{Html, Selector};
 use std::collections::BTreeMap;
+use std::fmt::Display;
 use std::string::String;
 use std::sync::Arc;
 use reqwest::redirect::Policy;
@@ -20,6 +21,17 @@ pub enum AccountType {
     Teacher,
     Parent,
     Unknown,
+}
+
+impl Display for AccountType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Student => write!(f, "Student"),
+            Teacher => write!(f, "Teacher"),
+            AccountType::Parent => write!(f, "Parent"),
+            AccountType::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
 
 /// Stores everything that is needed at Runtime and related to the Account
@@ -51,14 +63,10 @@ impl Account {
             .build()
             .unwrap();
 
-        let key_pair = generate_lanis_key_pair(128, &client).await;
+        let key_pair = generate_lanis_key_pair(128, &client).await?;
 
-        if key_pair.is_err() {
-            return Err(Error::KeyPair);
-        }
-
-        let schools = get_schools(&client).await.map_err(|e| Error::Network(e.to_string()))?;
-        let school = get_school(&secrets.school_id, &schools).await.map_err(|_| Error::NoSchool(format!("No school with id {}", secrets.school_id)))?;
+        let schools = get_schools(&client).await?;
+        let school = get_school(&secrets.school_id, &schools).await?;
 
         let mut account = Account {
             school,
@@ -66,7 +74,7 @@ impl Account {
             account_type: AccountType::Unknown,
             data: BTreeMap::new(),
             features: Vec::new(),
-            key_pair: key_pair.unwrap(),
+            key_pair,
             client,
             cookie_store,
         };
@@ -89,7 +97,16 @@ impl Account {
         let response = self.client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school.id)).form(&params).send();
         match response.await {
             Ok(response) => {
-                if response.status() == StatusCode::FOUND {
+                let response_status = response.status();
+
+                let text = response.text().await.map_err(|e| Error::Parsing(format!("Failed to parse response as text: {}", e)))?;
+                let html = Html::parse_document(&text);
+
+                let timeout_selector = Selector::parse("#authErrorLocktime").unwrap();
+                if let Some(timeout) = html.select(&timeout_selector).nth(0) { return Err(Error::LoginTimeout(timeout.text().collect::<String>().trim().parse().map_err(|e| Error::Parsing(format!("Failed to parse timeout from response as u32: {}", e)))?)); }
+
+                if response_status == StatusCode::FOUND {
+
                     match self.client.get(URL::CONNECT).send().await {
                         Ok(response) => {
                             match response.headers().get(LOCATION) {
@@ -108,7 +125,7 @@ impl Account {
                                     }
                                 }
                                 None => {
-                                    Err(Error::Login("error getting login URL".to_string()))
+                                    Err(Error::Network("error getting login URL".to_string()))
                                 }
                             }
                         }
@@ -117,7 +134,7 @@ impl Account {
                         }
                     }
                 } else {
-                    Err(Error::Login(format!("login failed with status code {}", response.status().as_u16())))
+                    Err(Error::Credentials("Wrong credentials!".to_string()))
                 }
             }
             Err(e) => {

@@ -38,7 +38,7 @@ pub async fn get_school(id: &i32, schools: &Vec<School>) -> Result<School, Error
     Err(Error::SchoolNotFound(format!("No school with id {} found", id)))
 }
 
-pub async fn get_schools(client: &Client) -> Result<Vec<School>, String> {
+pub async fn get_schools(client: &Client) -> Result<Vec<School>, Error> {
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     pub struct JsonSchool {
@@ -59,7 +59,7 @@ pub async fn get_schools(client: &Client) -> Result<Vec<School>, String> {
                         let mut schools: Vec<School> = vec![];
                         let json_schools: serde_json::error::Result<Vec<JsonSchools>> = serde_json::from_str(&response);
                         if json_schools.is_err() {
-                            return Err("Failed to parse school json!".to_string());
+                            return Err(Error::Parsing("Failed to parse school json!".to_string()));
                         }
                         let json_schools = json_schools.unwrap();
 
@@ -75,7 +75,7 @@ pub async fn get_schools(client: &Client) -> Result<Vec<School>, String> {
                                         });
                                     }
                                     Err(e) => {
-                                        return Err(format!("Failed to parse id of school '{}'/'{}': {e}", school.ort,school.name))
+                                        return Err(Error::Parsing(format!("Failed to parse id of school '{}'/'{}': {e}", school.ort,school.name)))
                                     }
                                 }
                             }
@@ -83,13 +83,13 @@ pub async fn get_schools(client: &Client) -> Result<Vec<School>, String> {
                         Ok(schools)
                     }
                     Err(e) => {
-                        Err(format!("Failed to parse json:\n{:?}", e))
+                        Err(Error::Parsing(format!("Failed to parse json:\n{:?}", e)))
 
                     }
                 }
             }
             Err(e) => {
-                Err(format!("Failed to get school list:\n{}", e))
+                Err(Error::Network(format!("Failed to get school list:\n{}", e)))
             }
         }
 }

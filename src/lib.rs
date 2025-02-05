@@ -28,18 +28,38 @@ pub enum Error {
     /// Happens if something goes wrong with Threads (like [tokio::task::spawn_blocking]
     Threading(String),
     /// Happens if no school with the provided id is found
-    NoSchool(String),
+    SchoolNotFound(String),
     /// Happens if key_pair generation fails
     KeyPair,
-    Login(String),
-    /// Happens if a specific school couldn't be found
-    SchoolNotFound(String),
+    /// Happens if the user tried to log in to often with the same password. The [u32] contains the timeout in seconds
+    LoginTimeout(u32),
     /// Happens if anything goes wrong with uploading a file in Lessons
     LessonUploadError(LessonUploadError),
     /// Some other Error that may be an issue with the provided values or with the lanis backend
     ServerSide(String),
     /// Happens if anything goes wrong when interacting with the file system
     FileSystem(String),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::Network(e) => write!(f, "Error::Network({e})"),
+            Error::Parsing(e) => write!(f, "Error::Parsing({e})"),
+            Error::Crypto(e) => write!(f, "Error::Crypto({e})"),
+            Error::Html(e) => write!(f, "Error::Html({e})"),
+            Error::Credentials(e) => write!(f, "Error::Credentials({e})"),
+            Error::UntisAPI(e) => write!(f, "Error::UntisAPI({e})"),
+            Error::DateTime(e) => write!(f, "Error::DateTime({e})"),
+            Error::Threading(e) => write!(f, "Error::Threading({e})"),
+            Error::SchoolNotFound(e) => write!(f, "Error::SchoolNotFound({e})"),
+            Error::KeyPair => write!(f, "Error::KeyPair"),
+            Error::LoginTimeout(e) => write!(f, "Error::LoginTimeout({e})"),
+            Error::LessonUploadError(e) => write!(f, "Error::LessonUploadError({e})"),
+            Error::ServerSide(e) => write!(f, "Error::ServerSide({e})"),
+            Error::FileSystem(e) => write!(f, "Error::FileSystem({e})"),
+        }
+    }
 }
 
 
@@ -57,6 +77,21 @@ pub enum LessonUploadError {
     DeletionFailed,
     Unknown,
     UnknownServerError,
+}
+
+impl std::fmt::Display for LessonUploadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            LessonUploadError::NoInfo => write!(f, "LessonUploadError::NoInfo"),
+            LessonUploadError::NoDetailedInfo => write!(f, "LessonUploadError::NoDetailedInfo"),
+            LessonUploadError::Network(e) => write!(f, "LessonUploadError::Network({e})"),
+            LessonUploadError::WrongPassword => write!(f, "LessonUploadError::WrongPassword"),
+            LessonUploadError::EncryptionFailed(e) => write!(f, "LessonUploadError::EncryptionFailed({})", e),
+            LessonUploadError::DeletionFailed => write!(f, "LessonUploadError::DeletionFailed"),
+            LessonUploadError::Unknown => write!(f, "LessonUploadError::Unknown"),
+            LessonUploadError::UnknownServerError => write!(f, "LessonUploadError::UnknownServerError"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -223,7 +258,7 @@ mod tests {
             println!("get_lessons() took {}ms", stopwatch.split().split.as_millis());
 
             let mut stopwatch = StopWatch::start();
-            for lesson in lessons.lessons.iter_mut() {
+            for lesson in lessons.iter_mut() {
                 println!("\tid: {}", lesson.id);
                 println!("\turl: {}", lesson.url);
                 println!("\tname: {}", lesson.name);
@@ -417,10 +452,15 @@ mod tests {
 
             print!("\tGetting full conversation... ");
             let mut stopwatch = StopWatch::start();
-            let conversation = overview.get(&account.client, &account.key_pair).await.unwrap();
+            let mut conversation = overview.get(&account.client, &account.key_pair).await.unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Took {}ms", ms);
             println!("{:#?}", conversation);
+            print!("\tRefreshing conversation... ");
+            let mut stopwatch = StopWatch::start();
+            conversation.refresh(&account.client, &account.key_pair).await.unwrap();
+            let ms = stopwatch.split().split.as_millis();
+            println!("Took {}ms", ms);
         }
 
         if let Ok(reply_number) = env::var("MESSAGES_REPLY_TO") {

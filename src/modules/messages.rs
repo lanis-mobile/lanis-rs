@@ -14,7 +14,6 @@ pub struct ConversationOverview {
     pub id: i32,
     pub uid: String,
     pub sender: Participant,
-    pub sender_short: String,
     pub receiver: Vec<Participant>,
     pub subject: String,
     pub date_time: DateTime<Utc>,
@@ -99,7 +98,6 @@ impl ConversationOverview {
                         let mut sender = ConversationOverview::parse_participant(&json_row.sender_name)?;
                         let sender_id = json_row.sender.parse::<i32>().map_err(|e| Error::Parsing(format!("failed to parse sender as i32 '{}'", e)))?;
                         sender.id = Some(sender_id);
-                        let sender_short = ConversationOverview::parse_name(&json_row.kuerzel)?;
                         let receiver = {
                             let mut result = Vec::new();
                             for receiver in &json_row.empf {
@@ -116,7 +114,6 @@ impl ConversationOverview {
                             id,
                             uid,
                             sender,
-                            sender_short,
                             receiver,
                             subject,
                             date_time,
@@ -162,7 +159,7 @@ impl ConversationOverview {
     pub async fn show(&mut self, client: &Client) -> Result<bool, Error> {
         match client.post(URL::MESSAGES).form(&[("a", "recycleMsg"), ("uniqid", self.uid.as_str())]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
             Ok(response) => {
-                self.parse_recycle_response(response).await
+                Ok(!self.parse_recycle_response(response).await?)
             },
             Err(e) => Err(Error::Network(format!("failed to show conversation '{}'", e)))
         }
@@ -295,8 +292,8 @@ impl ConversationOverview {
                         let mut date_split = json.date.split_once(" ").unwrap_or_default();
                         let mut date = date_split.0.to_string();
                         if date_split.0 == "heute" { let new_date = format!("{}", chrono::Local::now().date_naive().format("%d.%m.%Y")); date = new_date }
+                        if date_split.0 == "gestern" { let new_date = format!("{}", (chrono::Local::now() - chrono::Duration::days(1)).date_naive().format("%d.%m.%Y")); date = new_date }
                         date_split.0 = date.as_str();
-                        println!("{} {}", date_split.0, &format!("{}:00", date_split.1));
                         let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| Error::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?.to_utc();
                         let author = {
                             let id = Some(json.sender.parse().map_err(|e| Error::Parsing(format!("failed to parse sender id '{}'", e)))?);
@@ -313,6 +310,8 @@ impl ConversationOverview {
 
                         let own = json.own.to_owned();
                         let content = json.content.to_owned();
+                        let html_content = Html::parse_document(&format!("<body>{}</body>", content));
+                        let content = html_content.root_element().text().collect::<String>().trim().to_owned();
 
                         Message { id, date, author, own, content }
                     });
@@ -327,10 +326,9 @@ impl ConversationOverview {
 
                 let messages = parse_messages(&decrypted_json_message_field)?;
 
-                async fn parse_participants(messages: &Vec<Message>, receivers: &Vec<Participant>, sender: &Participant) -> Result<Vec<Participant>, Error> {
+                async fn parse_participants(messages: &Vec<Message>, receivers: &Vec<Participant>) -> Result<Vec<Participant>, Error> {
                     let mut participants = Vec::new();
                     participants.append(receivers.to_owned().as_mut());
-                    participants.push(sender.to_owned());
 
                     for message in messages {
                         if !participants.contains(&message.author) {
@@ -341,7 +339,7 @@ impl ConversationOverview {
                     Ok(participants)
                 }
 
-                let participants = parse_participants(&messages, &self.receiver, &self.sender).await?;
+                let participants = parse_participants(&messages, &self.receiver).await?;
 
                 let id = self.id.to_owned();
                 let uid = self.uid.to_owned();
@@ -362,19 +360,42 @@ impl ConversationOverview {
                 let only_private_answers = match_german_string_bool(&decrypted_json_message_field.private_answer_only).await?;
                 let can_reply = !match_german_string_bool(&decrypted_json_message_field.no_answer_allowed).await?;
 
-                let amount_participants = decrypted_json_message_field.stats.participants;
-                let amount_teachers = decrypted_json_message_field.stats.supervisors;
-                let amount_parents = decrypted_json_message_field.stats.parents;
+                let mut amount_students = decrypted_json_message_field.stats.participants;
+                let mut amount_teachers = decrypted_json_message_field.stats.supervisors;
+                let mut amount_parents = decrypted_json_message_field.stats.parents;
+
+                match self.sender.account_type {
+                    AccountType::Student => amount_students += 1,
+                    AccountType::Teacher => amount_teachers += 1,
+                    AccountType::Parent => amount_parents += 1,
+                    AccountType::Unknown => ()
+                }
+
+                let amount_participants = amount_students + amount_teachers + amount_parents;
+
+                let visible = self.visible;
+                let read = self.read;
+                let date_time = self.date_time.to_owned();
+
+                let subject = self.subject.to_owned();
+                let author = self.sender.to_owned();
 
                 Ok(Conversation {
                     id,
                     uid,
+                    visible,
+                    read,
+                    date_time,
+
+                    subject,
+                    author,
 
                     group_chat,
                     only_private_answers,
                     can_reply,
 
                     amount_participants,
+                    amount_students,
                     amount_teachers,
                     amount_parents,
 
@@ -393,6 +414,14 @@ impl ConversationOverview {
 pub struct Conversation {
     pub id: i32,
     pub uid: String,
+    pub visible: bool,
+    pub read: bool,
+    pub date_time: DateTime<Utc>,
+
+    /// The subject of the [Conversation]
+    pub subject: String,
+    /// The person who created this [Conversation]
+    pub author: Participant,
 
     /// Is the [Conversation] a group chat
     pub group_chat: bool,
@@ -401,9 +430,11 @@ pub struct Conversation {
     /// Does the [Conversation] allow replies
     pub can_reply: bool,
 
-    /// How many participants are in the [Conversation] <br> <br>
+    /// How many participants are in the [Conversation]
     pub amount_participants: i32,
-    /// How many teachers are in the [Conversation] <br> <br>
+    /// How many students / other are in the [Conversation]
+    pub amount_students: i32,
+    /// How many teachers are in the [Conversation]
     /// Note: technically these are supervisors but teachers are as far as I know always supervisors
     pub amount_teachers: i32,
     /// How many parents are in the [Conversation]
@@ -417,6 +448,21 @@ pub struct Conversation {
 }
 
 impl Conversation {
+    pub async fn refresh(&mut self, client: &Client, key_pair: &LanisKeyPair) -> Result<(), Error> {
+        let overview = ConversationOverview {
+            id: self.id,
+            uid: self.uid.to_owned(),
+            sender: self.author.to_owned(),
+            receiver: self.participants.to_owned(),
+            subject: self.subject.to_owned(),
+            date_time: self.date_time.to_owned(),
+            read: self.read,
+            visible: self.visible,
+        };
+
+        Ok(*self = ConversationOverview::get(&overview, client, key_pair).await?)
+    }
+
     /// Reply to a [Conversation] (send a message) <br>
     /// `message` supports lanis formatting (see [here](https://support.schulportal.hessen.de/knowledgebase.php?article=664) for more info) <br>
     /// returns the UID of the new message (None if new message failed)
@@ -453,7 +499,7 @@ impl Conversation {
             to: sender_id.to_string(),
             group_only: bool_to_german(&self.group_chat),
             private_answers_only: bool_to_german(&self.only_private_answers),
-            message: message.to_string(),
+            message: message.trim().to_string(),
             replay_to_message: self.uid.to_owned()
         };
 
@@ -475,7 +521,7 @@ impl Conversation {
                 if !json.back { return Ok(None) }
                 Ok(Some(json.id))
             }
-            Err(e) => return Err(Error::Network(format!("failed to send message '{e}'")))
+            Err(e) => Err(Error::Network(format!("failed to send message '{e}'")))
         }
     }
 }

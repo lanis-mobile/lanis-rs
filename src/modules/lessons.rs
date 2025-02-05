@@ -10,35 +10,32 @@ use regex::Regex;
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use reqwest::multipart::Part;
+use serde::{Deserialize, Serialize};
 use crate::{Error, LessonUploadError};
+use crate::utils::conversion::string_to_byte_size;
 use crate::utils::crypt::{decrypt_lanis_encoded_tags, encrypt_lanis_data};
 use crate::utils::datetime::date_time_string_to_datetime;
 
-#[derive(Debug, Clone)]
-pub struct Lessons {
-    pub lessons: Vec<Lesson>,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Lesson {
     pub id: i32,
     pub url: String,
     pub name: String,
     pub teacher: String,
-    /// Should always be Some , if not something went wrong
+    /// Should always be Some if nothing went wrong
     pub teacher_short: Option<String>,
     pub attendances: BTreeMap<String, String>,
     /// If this is None there is no latest entry
     pub entry_latest: Option<LessonEntry>,
-    /// Will be Some(empty) if no exams are found and None if this value wasn't initialized
+    /// Will be empty if no entries are found and None if this value wasn't initialized
     pub entries: Option<Vec<LessonEntry>>,
-    /// Will be empty if no exams are found and None if this value wasn't initialized
+    /// Will be empty if no marks are found and None if this value wasn't initialized
     pub marks: Option<Vec<LessonMark>>,
     /// Will be empty if no exams are found and None if this value wasn't initialized
     pub exams: Option<Vec<LessonExam>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct LessonEntry {
     pub id: i32,
     pub date: DateTime<Utc>,
@@ -51,19 +48,20 @@ pub struct LessonEntry {
     pub uploads: Option<Vec<LessonUpload>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct Attachment {
     pub name: String,
+    pub size: u64,
     pub url: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct Homework {
     pub description: String,
     pub completed: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct LessonUpload {
     pub id: i32,
     pub name: String,
@@ -75,7 +73,7 @@ pub struct LessonUpload {
     pub info: Option<LessonUploadInfo>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct LessonUploadInfo {
     pub course_id: Option<i32>,
     pub entry_id: Option<i32>,
@@ -95,14 +93,14 @@ pub struct LessonUploadInfo {
     pub public_files: Vec<LessonUploadInfoPublicFile>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct LessonUploadInfoOwnFile {
     pub name: String,
     pub url: String,
     pub index: i32,
     pub comment: Option<String>,
 }
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct LessonUploadInfoPublicFile {
     pub name: String,
     pub url: String,
@@ -110,14 +108,14 @@ pub struct LessonUploadInfoPublicFile {
     pub person: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct LessonUploadFileStatus {
     pub name: String,
     pub status: String,
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct LessonMark {
     pub name: String,
     pub date: DateTime<Utc>,
@@ -125,7 +123,7 @@ pub struct LessonMark {
     pub comment: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct LessonExam {
     pub date: String,
     pub name: String,
@@ -184,7 +182,7 @@ impl Lesson {
                 let closed_upload_selector = Selector::parse(".btn-default").unwrap();
                 let upload_url_selector = Selector::parse("ul.dropdown-menu li a").unwrap();
                 let upload_badge_selector = Selector::parse("span.badge").unwrap();
-                let upload_small_selector = Selector::parse("small").unwrap();
+                let small_selector = Selector::parse("small").unwrap();
 
                 for row in history_table_rows {
                     let id = row.attr("data-entry").unwrap().parse::<i32>().unwrap();
@@ -238,9 +236,16 @@ impl Lesson {
 
                             for element in row.select(&files_selector).nth(0).unwrap().child_elements() {
                                 let name = element.attr("data-file").unwrap().to_string();
+                                let size = match element.select(&small_selector).nth(0) {
+                                    Some(element) => {
+                                        string_to_byte_size(element.text().collect::<String>().replace("(", "").replace(")", "").trim().to_string()).await.map_err(|e| Error::Parsing(format!("failed to parse file size: '{}'", e)))?
+                                    },
+                                    None => 0,
+                                };
                                 let url = format!("{}&f={}", url, name);
                                 attachments.push(Attachment{
                                     name,
+                                    size,
                                     url,
                                 });
                             }
@@ -271,7 +276,7 @@ impl Lesson {
                                     }
                                 };
                                 let date = {
-                                    let text = open.select(&upload_small_selector).next().unwrap().text().collect::<String>().trim().to_string();
+                                    let text = open.select(&small_selector).next().unwrap().text().collect::<String>().trim().to_string();
                                     let text = text.replace("\n", "").trim().to_string();
                                     let text = text.replace("                                                                ", "").trim().to_string();
                                     let text = text.replace("bis ", "").trim().to_string();
@@ -919,7 +924,7 @@ impl LessonUpload {
     }
 }
 
-pub async fn get_lessons(account: &Account) -> Result<Lessons, Error> {
+pub async fn get_lessons(account: &Account) -> Result<Vec<Lesson>, Error> {
     let client = &account.client;
     let unix_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis();
     match client.get(URL::BASE.to_owned() + &format!("meinunterricht.php?cacheBreaker={}", unix_time)).send().await {
@@ -936,7 +941,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, Error> {
 
                     if let Some(lesson_folders) = document.select(&lesson_folders_selector).next() {
                         if let Some(row) = lesson_folders.select(&row_selector).next() {
-                            let mut lessons = Lessons { lessons: Vec::new() };
+                            let mut lessons = Vec::new();
                             for lesson in row.child_elements() {
                                 if let Some(url_element) = lesson.select(&link_selector).next() {
                                     let url = url_element.value().attr("href").unwrap().to_string();
@@ -944,7 +949,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, Error> {
                                     let name = lesson.select(&h2_selector).next().unwrap().text().collect::<String>().trim().to_string();
                                     let teacher: String = lesson.select(&button_selector).next().and_then(|btn| btn.value().attr("title")).map(|s| s.to_string()).unwrap();
                                     let teacher: String = teacher.split(" (").next().unwrap().to_string();
-                                    lessons.lessons.push(Lesson {
+                                    lessons.push(Lesson {
                                         id,
                                         url,
                                         name,
@@ -999,7 +1004,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, Error> {
                                     Homework { description, completed }
                                 });
 
-                                for lesson in lessons.lessons.iter_mut() {
+                                for lesson in lessons.iter_mut() {
                                     if lesson.url == course_url.to_owned() {
                                         lesson.entry_latest = Option::from(LessonEntry {
                                             id: entry_id.to_owned(),
@@ -1060,7 +1065,7 @@ pub async fn get_lessons(account: &Account) -> Result<Lessons, Error> {
 
                                 if let Some(hyperlink) = row.select(&link_selector).next() {
                                     let course_url = hyperlink.value().attr("href").unwrap_or("");
-                                    for lesson in &mut lessons.lessons {
+                                    for lesson in &mut lessons {
                                         if course_url.contains(&lesson.id.to_string()) {
                                             lesson.attendances = attendances;
                                             break;
