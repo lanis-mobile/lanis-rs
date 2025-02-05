@@ -1,5 +1,4 @@
 //! This example shows how to get Lessons and there full overviews.
-//! It also shows how to interact with lessons entries etc
 
 use std::process::Command;
 use lanis_rs::base::account::{Account, AccountSecrets};
