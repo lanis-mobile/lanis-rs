@@ -1,9 +1,9 @@
 //! This example shows how to get Lessons and there full overviews.
 
-use std::process::Command;
 use lanis_rs::base::account::{Account, AccountSecrets};
-use lanis_rs::Error;
 use lanis_rs::modules::lessons::{get_lessons, Attachment, LessonUpload};
+use lanis_rs::Error;
+use std::process::Command;
 
 #[tokio::main]
 async fn main() {
@@ -12,7 +12,7 @@ async fn main() {
     let account_keep_alive = account.clone();
 
     // Keep session alive
-    tokio::spawn(async move{
+    tokio::spawn(async move {
         loop {
             account_keep_alive.prevent_logout().await.unwrap();
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
@@ -37,8 +37,19 @@ async fn main() {
             lesson.set_data(&account).await.unwrap();
 
             // Print all entries
-            for (i, entry) in lesson.entries.as_ref().unwrap_or(&Vec::new()).iter().enumerate() {
-                println!("{:03}: {} - {}", i, entry.date.naive_local().date(), entry.title);
+            for (i, entry) in lesson
+                .entries
+                .as_ref()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .enumerate()
+            {
+                println!(
+                    "{:03}: {} - {}",
+                    i,
+                    entry.date.naive_local().date(),
+                    entry.title
+                );
                 if let Some(homework) = &entry.homework {
                     let completed = match homework.completed {
                         true => "Completed",
@@ -52,7 +63,9 @@ async fn main() {
             println!("Please select your entry:");
             let i = index_selector(lesson.entries.as_ref().unwrap().len() + 1);
 
-            if i == lesson.entries.as_ref().unwrap().len() { break; }
+            if i == lesson.entries.as_ref().unwrap().len() {
+                break;
+            }
 
             let entry = lesson.entries.as_mut().unwrap().get_mut(i).unwrap();
             loop {
@@ -64,11 +77,17 @@ async fn main() {
                         true => "Completed",
                         false => "Uncompleted",
                     };
-                    println!("\n---- HOMEWORK ({}) ----\n{}\n---- HOMEWORK END ----\n", completed, homework.description);
+                    println!(
+                        "\n---- HOMEWORK ({}) ----\n{}\n---- HOMEWORK END ----\n",
+                        completed, homework.description
+                    );
                     println!("{}: Mark homework as completed/uncompleted", i);
                     i += 1;
                 } else {
-                    println!("{}: Mark homework as completed/uncompleted (Unavailable)", i);
+                    println!(
+                        "{}: Mark homework as completed/uncompleted (Unavailable)",
+                        i
+                    );
                     i += 1;
                 }
 
@@ -105,7 +124,10 @@ async fn main() {
 
                 if i == 0 {
                     if let Some(homework) = &mut entry.homework {
-                        homework.set_homework(!homework.completed, lesson.id, entry.id, &account.client).await.unwrap() // Flip homework completion status
+                        homework
+                            .set_homework(!homework.completed, lesson.id, entry.id, &account.client)
+                            .await
+                            .unwrap() // Flip homework completion status
                     }
                 } else if i == 1 {
                     if let Some(uploads) = &mut entry.uploads {
@@ -141,9 +163,7 @@ fn index_selector(max_index: usize) -> usize {
         let mut index = String::new();
         std::io::stdin().read_line(&mut index).unwrap();
         let index = match index.trim().parse::<usize>() {
-            Ok(usize) => {
-                usize
-            }
+            Ok(usize) => usize,
             Err(_) => {
                 println!("Your input is not a number. Please enter a number!");
                 continue;
@@ -165,9 +185,7 @@ async fn account() -> Account {
         let mut school_id = String::new();
         std::io::stdin().read_line(&mut school_id).unwrap();
         let school_id = match school_id.trim().parse::<i32>() {
-            Ok(i32) => {
-                i32
-            }
+            Ok(i32) => i32,
             Err(_) => {
                 println!("Your input is not a number. Please enter a number!");
                 continue;
@@ -179,20 +197,14 @@ async fn account() -> Account {
         std::io::stdin().read_line(&mut username).unwrap();
 
         // Disable echoing
-        let _ = Command::new("stty")
-            .arg("-echo")
-            .status()
-            .unwrap();
+        let _ = Command::new("stty").arg("-echo").status().unwrap();
 
         println!("Enter your password: ");
         let mut password = String::new();
         std::io::stdin().read_line(&mut password).unwrap();
 
         // Enable echoing
-        let _ = Command::new("stty")
-            .arg("echo")
-            .status()
-            .unwrap();
+        let _ = Command::new("stty").arg("echo").status().unwrap();
 
         let secrets = AccountSecrets::new(
             school_id,
@@ -200,18 +212,16 @@ async fn account() -> Account {
             password.trim().to_string(),
         );
 
-
         println!("Logging in...");
         match Account::new(secrets).await {
             Ok(account) => break account,
-            Err(e) => {
-                match e {
-                    Error::Credentials(_) => println!("Invalid credentials! Please try again."),
-                    Error::SchoolNotFound(_) => println!("School not found! Please try again."),
-                    Error::LoginTimeout(t) => println!("Login timeout! Please try again in {t}s."),
-                    _ => println!("Something went wrong while trying to login. Please try again. {e}"),
-                }
-            }
+            Err(e) => match e {
+                Error::Credentials(_) => println!("Invalid credentials! Please try again."),
+                Error::SchoolNotFound(_) => println!("School not found! Please try again."),
+                Error::LoginTimeout(t) => println!("Login timeout! Please try again in {t}s."),
+                _ => println!("Something went wrong while trying to login. Please try again. {e}"),
+            },
         }
     }
 }
+

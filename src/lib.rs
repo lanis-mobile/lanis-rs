@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 pub mod base;
-pub mod utils;
 pub mod modules;
+pub mod utils;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum Feature {
@@ -62,7 +62,6 @@ impl std::fmt::Display for Error {
     }
 }
 
-
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum LessonUploadError {
     /// Happens if 'info' in [LessonUpload] is None
@@ -86,10 +85,14 @@ impl std::fmt::Display for LessonUploadError {
             LessonUploadError::NoDetailedInfo => write!(f, "LessonUploadError::NoDetailedInfo"),
             LessonUploadError::Network(e) => write!(f, "LessonUploadError::Network({e})"),
             LessonUploadError::WrongPassword => write!(f, "LessonUploadError::WrongPassword"),
-            LessonUploadError::EncryptionFailed(e) => write!(f, "LessonUploadError::EncryptionFailed({})", e),
+            LessonUploadError::EncryptionFailed(e) => {
+                write!(f, "LessonUploadError::EncryptionFailed({})", e)
+            }
             LessonUploadError::DeletionFailed => write!(f, "LessonUploadError::DeletionFailed"),
             LessonUploadError::Unknown => write!(f, "LessonUploadError::Unknown"),
-            LessonUploadError::UnknownServerError => write!(f, "LessonUploadError::UnknownServerError"),
+            LessonUploadError::UnknownServerError => {
+                write!(f, "LessonUploadError::UnknownServerError")
+            }
         }
     }
 }
@@ -98,18 +101,20 @@ impl std::fmt::Display for LessonUploadError {
 mod tests {
     use super::*;
 
-    use crate::base::schools::{get_school_id, get_schools, School};
-    use crate::modules::lessons::{get_lessons};
     use crate::base::account::{Account, AccountSecrets, UntisSecrets};
+    use crate::base::schools::{get_school_id, get_schools, School};
+    use crate::modules::lessons::get_lessons;
     use crate::modules::timetable;
     use crate::modules::timetable::{Provider, Week};
 
-    use std::{env, fs};
-    use std::path::Path;
-    use stopwatch_rs::StopWatch;
     use crate::modules::file_storage::FileStoragePage;
-    use crate::modules::messages::{can_choose_type, create_conversation, search_receiver, ConversationOverview};
+    use crate::modules::messages::{
+        can_choose_type, create_conversation, search_receiver, ConversationOverview,
+    };
     use crate::utils::crypt::{decrypt_any, encrypt_any};
+    use std::path::Path;
+    use std::{env, fs};
+    use stopwatch_rs::StopWatch;
 
     #[tokio::test]
     async fn test_encryption() {
@@ -132,20 +137,20 @@ mod tests {
     #[tokio::test]
     async fn test_schools_get_school_id() {
         let mut schools: Vec<School> = vec![];
-        schools.push(School{
+        schools.push(School {
             id: 3120,
             name: String::from("The Almighty Rust School"),
-            city: String::from("Rust City")
+            city: String::from("Rust City"),
         });
-        schools.push(School{
+        schools.push(School {
             id: 3920,
             name: String::from("The Almighty Rust School"),
-            city: String::from("Rust City 2")
+            city: String::from("Rust City 2"),
         });
-        schools.push(School{
+        schools.push(School {
             id: 4031,
             name: String::from("The Almighty Rust School 2"),
-            city: String::from("Rust City")
+            city: String::from("Rust City"),
         });
         let result = get_school_id("The Almighty Rust School", "Rust City 2", &schools).await;
         assert_eq!(result, 3920);
@@ -164,10 +169,15 @@ mod tests {
 
         let account_secrets = AccountSecrets::new(
             {
-                env::var("LANIS_SCHOOL_ID").unwrap_or_else(|e| {
-                    println!("Error ({})\nDid you define 'LANIS_SCHOOL_ID' in env?", e);
-                    String::from("0")
-                }).parse().expect("Couldn't parse 'LANIS_SCHOOL_ID'.\nDid you define SCHOOL_ID as an i32?")
+                env::var("LANIS_SCHOOL_ID")
+                    .unwrap_or_else(|e| {
+                        println!("Error ({})\nDid you define 'LANIS_SCHOOL_ID' in env?", e);
+                        String::from("0")
+                    })
+                    .parse()
+                    .expect(
+                        "Couldn't parse 'LANIS_SCHOOL_ID'.\nDid you define SCHOOL_ID as an i32?",
+                    )
             },
             {
                 env::var("LANIS_USERNAME").unwrap_or_else(|e| {
@@ -183,7 +193,10 @@ mod tests {
             },
         );
         let account = Account::new(account_secrets).await.unwrap();
-        println!("account::new() took {}ms", stopwatch.split().split.as_millis());
+        println!(
+            "account::new() took {}ms",
+            stopwatch.split().split.as_millis()
+        );
 
         account
     }
@@ -194,7 +207,10 @@ mod tests {
 
         let mut stopwatch = StopWatch::start();
         account.prevent_logout().await.unwrap();
-        println!("account.prevent_logout() took {}ms", stopwatch.split().split.as_millis());
+        println!(
+            "account.prevent_logout() took {}ms",
+            stopwatch.split().split.as_millis()
+        );
         println!();
 
         println!("Private Key:\n{}", account.key_pair.private_key_string);
@@ -212,7 +228,13 @@ mod tests {
         if account.is_supported(Feature::LanisTimetable) {
             // Lanis (All)
             let mut stopwatch = StopWatch::start();
-            let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::All), &account.client, chrono::Local::now().date_naive()).await.unwrap();
+            let time_table_week = Week::new(
+                Provider::Lanis(timetable::LanisType::All),
+                &account.client,
+                chrono::Local::now().date_naive(),
+            )
+            .await
+            .unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Lanis All: {:?}", time_table_week);
             println!("Week::new() took {}ms", ms);
@@ -220,7 +242,13 @@ mod tests {
 
             // Lanis (Own)
             let mut stopwatch = StopWatch::start();
-            let time_table_week = Week::new(Provider::Lanis(timetable::LanisType::Own), &account.client, chrono::Local::now().date_naive()).await.unwrap();
+            let time_table_week = Week::new(
+                Provider::Lanis(timetable::LanisType::Own),
+                &account.client,
+                chrono::Local::now().date_naive(),
+            )
+            .await
+            .unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Lanis Own: {:?}", time_table_week);
             println!("Week::new() took {}ms", ms);
@@ -230,16 +258,28 @@ mod tests {
         }
 
         // Untis
-        if env::var("UNTIS_TEST_TIMETABLE").unwrap_or("FALSE".to_string()).eq("TRUE") {
+        if env::var("UNTIS_TEST_TIMETABLE")
+            .unwrap_or("FALSE".to_string())
+            .eq("TRUE")
+        {
             let mut stopwatch = StopWatch::start();
-            let school_name = env::var("UNTIS_SCHOOL_NAME").expect("Couldn't find 'UNTIS_SCHOOL_NAME' in env! Did you set it?");
-            let username = env::var("UNTIS_USERNAME").expect("Couldn't find 'UNTIS_USERNAME' in env! Did you set it?");
-            let password = env::var("UNTIS_PASSWORD").expect("Couldn't find 'UNTIS_PASSWORD' in env! Did you set it?");
+            let school_name = env::var("UNTIS_SCHOOL_NAME")
+                .expect("Couldn't find 'UNTIS_SCHOOL_NAME' in env! Did you set it?");
+            let username = env::var("UNTIS_USERNAME")
+                .expect("Couldn't find 'UNTIS_USERNAME' in env! Did you set it?");
+            let password = env::var("UNTIS_PASSWORD")
+                .expect("Couldn't find 'UNTIS_PASSWORD' in env! Did you set it?");
 
             let secrets = UntisSecrets::new(school_name, username, password);
             account.secrets.untis_secrets = Some(secrets);
 
-            let time_table_week = Week::new(Provider::Untis(account.secrets.untis_secrets.as_ref().unwrap().clone()), &account.client, chrono::Local::now().date_naive() - chrono::Duration::weeks(1)).await.unwrap();
+            let time_table_week = Week::new(
+                Provider::Untis(account.secrets.untis_secrets.as_ref().unwrap().clone()),
+                &account.client,
+                chrono::Local::now().date_naive() - chrono::Duration::weeks(1),
+            )
+            .await
+            .unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Untis: {:?}", time_table_week);
             println!("Week::new() took {}ms", ms);
@@ -255,7 +295,10 @@ mod tests {
         if account.is_supported(Feature::MeinUnttericht) {
             let mut stopwatch = StopWatch::start();
             let mut lessons = get_lessons(&account).await.unwrap();
-            println!("get_lessons() took {}ms", stopwatch.split().split.as_millis());
+            println!(
+                "get_lessons() took {}ms",
+                stopwatch.split().split.as_millis()
+            );
 
             let mut stopwatch = StopWatch::start();
             for lesson in lessons.iter_mut() {
@@ -268,7 +311,10 @@ mod tests {
                 println!("\tentry_latest: {:?}", lesson.entry_latest);
                 let mut stopwatch = StopWatch::start();
                 lesson.set_data(&account).await.unwrap();
-                println!("\tlesson.set_data() took {}ms", stopwatch.split().split.as_millis());
+                println!(
+                    "\tlesson.set_data() took {}ms",
+                    stopwatch.split().split.as_millis()
+                );
                 println!("\tmarks: {:?}", lesson.marks);
                 println!("\tentries:");
                 let mut stopwatch = StopWatch::start();
@@ -279,16 +325,32 @@ mod tests {
                         let mut new_homework = !homework.completed;
 
                         let mut stopwatch = StopWatch::start();
-                        homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
-                        println!("\t\t\tHomework was changed from {} to {} and took {}ms", !homework.completed, new_homework, stopwatch.split().split.as_millis());
+                        homework
+                            .set_homework(new_homework, lesson.id, entry.id, &account.client)
+                            .await
+                            .unwrap();
+                        println!(
+                            "\t\t\tHomework was changed from {} to {} and took {}ms",
+                            !homework.completed,
+                            new_homework,
+                            stopwatch.split().split.as_millis()
+                        );
                         entry.homework = Some(homework.to_owned());
                         println!("\t\t\tHomework after change: {:?}", entry.homework);
 
                         new_homework = !new_homework;
 
                         let mut stopwatch = StopWatch::start();
-                        homework.set_homework(new_homework, lesson.id, entry.id, &account.client).await.unwrap();
-                        println!("\t\t\tHomework was changed from {} to {} and took {}", !homework.completed, new_homework, stopwatch.split().split.as_millis());
+                        homework
+                            .set_homework(new_homework, lesson.id, entry.id, &account.client)
+                            .await
+                            .unwrap();
+                        println!(
+                            "\t\t\tHomework was changed from {} to {} and took {}",
+                            !homework.completed,
+                            new_homework,
+                            stopwatch.split().split.as_millis()
+                        );
                         entry.homework = Some(homework);
                         println!("\t\t\tHomework after change: {:?}", entry.homework);
                     }
@@ -297,13 +359,22 @@ mod tests {
                         for upload in &mut uploads {
                             let mut stopwatch = StopWatch::start();
                             upload.info = Some(upload.get_info(&account.client).await.unwrap());
-                            println!("\t\t\tupload.get_info() took {}ms", stopwatch.split().split.as_millis());
+                            println!(
+                                "\t\t\tupload.get_info() took {}ms",
+                                stopwatch.split().split.as_millis()
+                            );
                             println!("\t\t\tUpload: {:?}", upload);
                             if upload.state {
                                 let mut stopwatch = StopWatch::start();
-                                let path = env::var("LANIS_TEST_FILE").unwrap_or_else(|e| { panic!("Error ({})\nDid you define 'LANIS_TEST_FILE' in env?", e)});
+                                let path = env::var("LANIS_TEST_FILE").unwrap_or_else(|e| {
+                                    panic!(
+                                        "Error ({})\nDid you define 'LANIS_TEST_FILE' in env?",
+                                        e
+                                    )
+                                });
                                 let path = Path::new(&path);
-                                let status = upload.upload(vec![path], &account.client).await.unwrap();
+                                let status =
+                                    upload.upload(vec![path], &account.client).await.unwrap();
                                 let ms = stopwatch.split().split.as_millis();
                                 println!("\t\t\tUploaded test file: {}", upload.url);
                                 println!("\t\t\t\tUrl: {}", upload.url);
@@ -311,7 +382,8 @@ mod tests {
                                 println!("\t\t\tupload.upload() took {}ms", ms);
 
                                 let i = {
-                                    upload.info = Some(upload.get_info(&account.client).await.unwrap());
+                                    upload.info =
+                                        Some(upload.get_info(&account.client).await.unwrap());
                                     let own_files = upload.info.clone().unwrap().own_files;
                                     let mut i = -1;
                                     for file in own_files {
@@ -328,12 +400,18 @@ mod tests {
                                 if i != -1 {
                                     upload.delete(&i, &account).await.unwrap();
                                 }
-                                println!("\t\t\tupload.delete() took {}ms", stopwatch.split().split.as_millis());
+                                println!(
+                                    "\t\t\tupload.delete() took {}ms",
+                                    stopwatch.split().split.as_millis()
+                                );
                             }
                         }
                     }
                 }
-                println!("\tIteration of all entries took {}ms", stopwatch.split().split.as_millis());
+                println!(
+                    "\tIteration of all entries took {}ms",
+                    stopwatch.split().split.as_millis()
+                );
                 println!("\texams:");
                 for exam in lesson.exams.clone().unwrap() {
                     println!("\t\t{:?}", exam)
@@ -341,7 +419,10 @@ mod tests {
 
                 println!(" ");
             }
-            println!("Iteration of all lessons took {}ms", stopwatch.split().split.as_millis());
+            println!(
+                "Iteration of all lessons took {}ms",
+                stopwatch.split().split.as_millis()
+            );
 
             println!()
         } else {
@@ -369,7 +450,9 @@ mod tests {
         if let Some(node) = root_page.folder_nodes.get(0) {
             print!("Getting folder node page... ");
             let mut stopwatch = StopWatch::start();
-            let first_page = FileStoragePage::get(node.id, &account.client).await.unwrap();
+            let first_page = FileStoragePage::get(node.id, &account.client)
+                .await
+                .unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Took {} ms", ms);
             println!("First page:\n{:#?}", first_page);
@@ -404,7 +487,9 @@ mod tests {
 
         print!("Getting root page of conversations... ");
         let mut stopwatch = StopWatch::start();
-        let overviews = ConversationOverview::get_root(&account.client, &account.key_pair).await.unwrap();
+        let overviews = ConversationOverview::get_root(&account.client, &account.key_pair)
+            .await
+            .unwrap();
         let ms = stopwatch.split().split.as_millis();
         println!("Took {}ms", ms);
         println!("Conversation overviews: {:#?}", overviews);
@@ -415,7 +500,7 @@ mod tests {
                 println!("\tBefore: {}", overview.visible);
                 print!("\tHiding conversation overview... ");
                 let mut stopwatch = StopWatch::start();
-                let result =  overview.hide(&account.client).await.unwrap();
+                let result = overview.hide(&account.client).await.unwrap();
                 let ms = stopwatch.split().split.as_millis();
                 println!("Took {}ms", ms);
                 println!("\tResult: {}", result);
@@ -424,7 +509,7 @@ mod tests {
 
                 print!("\tShowing conversation overview... ");
                 let mut stopwatch = StopWatch::start();
-                let result =  overview.show(&account.client).await.unwrap();
+                let result = overview.show(&account.client).await.unwrap();
                 let ms = stopwatch.split().split.as_millis();
                 println!("Took {}ms", ms);
                 println!("\tResult: {}", result);
@@ -433,7 +518,7 @@ mod tests {
                 println!("\tBefore: {}", overview.visible);
                 print!("\tShowing conversation overview... ");
                 let mut stopwatch = StopWatch::start();
-                let result =  overview.show(&account.client).await.unwrap();
+                let result = overview.show(&account.client).await.unwrap();
                 let ms = stopwatch.split().split.as_millis();
                 println!("Took {}ms", ms);
                 println!("\tResult: {}", result);
@@ -442,7 +527,7 @@ mod tests {
 
                 print!("\tHiding conversation overview... ");
                 let mut stopwatch = StopWatch::start();
-                let result =  overview.hide(&account.client).await.unwrap();
+                let result = overview.hide(&account.client).await.unwrap();
                 let ms = stopwatch.split().split.as_millis();
                 println!("Took {}ms", ms);
                 println!("\tResult: {}", result);
@@ -452,13 +537,19 @@ mod tests {
 
             print!("\tGetting full conversation... ");
             let mut stopwatch = StopWatch::start();
-            let mut conversation = overview.get(&account.client, &account.key_pair).await.unwrap();
+            let mut conversation = overview
+                .get(&account.client, &account.key_pair)
+                .await
+                .unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Took {}ms", ms);
             println!("{:#?}", conversation);
             print!("\tRefreshing conversation... ");
             let mut stopwatch = StopWatch::start();
-            conversation.refresh(&account.client, &account.key_pair).await.unwrap();
+            conversation
+                .refresh(&account.client, &account.key_pair)
+                .await
+                .unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Took {}ms", ms);
         }
@@ -466,18 +557,27 @@ mod tests {
         if let Ok(reply_number) = env::var("MESSAGES_REPLY_TO") {
             let reply_number = reply_number.parse::<usize>().unwrap();
             let overview = overviews.get(reply_number).unwrap();
-            let conversation = overview.get(&account.client, &account.key_pair).await.unwrap();
+            let conversation = overview
+                .get(&account.client, &account.key_pair)
+                .await
+                .unwrap();
 
             print!("Replying to conversation... ");
             let mut stopwatch = StopWatch::start();
-            let result = conversation.reply("Test reply", &account.client, &account.key_pair).await.unwrap();
+            let result = conversation
+                .reply("Test reply", &account.client, &account.key_pair)
+                .await
+                .unwrap();
             let ms = stopwatch.split().split.as_millis();
             println!("Took {}ms", ms);
             assert_eq!(result.is_some(), true);
             println!("UID of new message: {}", result.unwrap());
         }
 
-        println!("Can choose type: {}", can_choose_type(&account.client).await.unwrap());
+        println!(
+            "Can choose type: {}",
+            can_choose_type(&account.client).await.unwrap()
+        );
 
         if let Ok(query) = env::var("MESSAGES_RECEIVER_QUERY") {
             print!("Searching for receiver... ");
@@ -489,10 +589,19 @@ mod tests {
 
             if let Ok(person_pos) = env::var("MESSAGES_RECEIVER_POS_CREATE") {
                 let person_pos = person_pos.parse::<usize>().unwrap();
-                let content = fs::read_to_string("test_file.txt").unwrap_or("Test Message".to_string());
+                let content =
+                    fs::read_to_string("test_file.txt").unwrap_or("Test Message".to_string());
                 print!("Creating conversation... ");
                 let mut stopwatch = StopWatch::start();
-                let result = create_conversation(&vec![results.get(person_pos).unwrap().to_owned()], "Test Message", &content, &account.client, &account.key_pair).await.unwrap();
+                let result = create_conversation(
+                    &vec![results.get(person_pos).unwrap().to_owned()],
+                    "Test Message",
+                    &content,
+                    &account.client,
+                    &account.key_pair,
+                )
+                .await
+                .unwrap();
                 let ms = stopwatch.split().split.as_millis();
                 println!("Took {}ms", ms);
                 assert_eq!(result.is_some(), true);

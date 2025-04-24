@@ -12,11 +12,14 @@ impl URL {
 
     pub const START: &'static str = "https://start.schulportal.hessen.de/startseite.php";
 
-    pub const USER_DATA: &'static str = "https://start.schulportal.hessen.de/benutzerverwaltung.php";
+    pub const USER_DATA: &'static str =
+        "https://start.schulportal.hessen.de/benutzerverwaltung.php";
 
     // Apps
-    pub const MEIN_UNTERRICHT: &'static str = "https://start.schulportal.hessen.de/meinunterricht.php";
+    pub const MEIN_UNTERRICHT: &'static str =
+        "https://start.schulportal.hessen.de/meinunterricht.php";
     pub const TIMETABLE: &'static str = "https://start.schulportal.hessen.de/stundenplan.php";
     pub const DATA_STORAGE: &'static str = "https://start.schulportal.hessen.de/dateispeicher.php";
     pub const MESSAGES: &'static str = "https://start.schulportal.hessen.de/nachrichten.php";
 }
+

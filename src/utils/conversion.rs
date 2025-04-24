@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub(crate) enum ConversionError {
@@ -24,10 +24,17 @@ impl Display for ConversionError {
 pub(crate) async fn string_to_byte_size(string: String) -> Result<u64, ConversionError> {
     let parts = string.trim().split_whitespace().collect::<Vec<&str>>();
     if parts.len() != 2 {
-        return Err(ConversionError::InvalidFormat(String::from("expected a number and the unit seperated by spaces")));
+        return Err(ConversionError::InvalidFormat(String::from(
+            "expected a number and the unit seperated by spaces",
+        )));
     }
 
-    let number = parts.get(0).unwrap().replace(",", ".").parse::<f64>().map_err(|e| ConversionError::Parsing(format!("failed to parse size to f64 '{}'", e)))?;
+    let number = parts
+        .get(0)
+        .unwrap()
+        .replace(",", ".")
+        .parse::<f64>()
+        .map_err(|e| ConversionError::Parsing(format!("failed to parse size to f64 '{}'", e)))?;
 
     let bytes = match *parts.get(1).unwrap() {
         "B" => number as u64,
@@ -41,3 +48,4 @@ pub(crate) async fn string_to_byte_size(string: String) -> Result<u64, Conversio
 
     Ok(bytes)
 }
+

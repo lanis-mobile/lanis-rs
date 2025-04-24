@@ -1,19 +1,21 @@
 use crate::base::account::AccountType::{Student, Teacher};
+use crate::base::schools::{get_school, get_schools, School};
+use crate::utils::constants::URL;
+use crate::utils::crypt::{
+    decrypt_any, encrypt_any, generate_lanis_key_pair, CryptorError, LanisKeyPair,
+};
+use crate::Error;
+use crate::Feature;
 use reqwest::header::LOCATION;
+use reqwest::redirect::Policy;
 use reqwest::{Client, StatusCode};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::string::String;
 use std::sync::Arc;
-use reqwest::redirect::Policy;
-use serde::{Deserialize, Serialize};
-use crate::base::schools::{get_school, get_schools, School};
-use crate::Feature;
-use crate::utils::constants::URL;
-use crate::utils::crypt::{decrypt_any, encrypt_any, generate_lanis_key_pair, CryptorError, LanisKeyPair};
-use crate::Error;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum AccountType {
@@ -88,58 +90,79 @@ impl Account {
     }
 
     /**
-      * Takes an account and a 'reqwest' client and generates a new session for lanis <br>
-      * Needs to be run on every new 'reqwest' client <br>
-      * Doesn't need to be run if [new] was used
+     * Takes an account and a 'reqwest' client and generates a new session for lanis <br>
+     * Needs to be run on every new 'reqwest' client <br>
+     * Doesn't need to be run if [new] was used
      */
     pub async fn create_session(&self) -> Result<(), Error> {
-        let params = [("user2", self.secrets.username.clone()), ("user", format!("{}.{}", self.school.id, self.secrets.username.clone())), ("password", self.secrets.password.clone())];
-        let response = self.client.post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school.id)).form(&params).send();
+        let params = [
+            ("user2", self.secrets.username.clone()),
+            (
+                "user",
+                format!("{}.{}", self.school.id, self.secrets.username.clone()),
+            ),
+            ("password", self.secrets.password.clone()),
+        ];
+        let response = self
+            .client
+            .post(URL::LOGIN.to_owned() + &*format!("?i={}", self.school.id))
+            .form(&params)
+            .send();
         match response.await {
             Ok(response) => {
                 let response_status = response.status();
 
-                let text = response.text().await.map_err(|e| Error::Parsing(format!("Failed to parse response as text: {}", e)))?;
+                let text = response.text().await.map_err(|e| {
+                    Error::Parsing(format!("Failed to parse response as text: {}", e))
+                })?;
                 let html = Html::parse_document(&text);
 
                 let timeout_selector = Selector::parse("#authErrorLocktime").unwrap();
-                if let Some(timeout) = html.select(&timeout_selector).nth(0) { return Err(Error::LoginTimeout(timeout.text().collect::<String>().trim().parse().map_err(|e| Error::Parsing(format!("Failed to parse timeout from response as u32: {}", e)))?)); }
+                if let Some(timeout) = html.select(&timeout_selector).nth(0) {
+                    return Err(Error::LoginTimeout(
+                        timeout
+                            .text()
+                            .collect::<String>()
+                            .trim()
+                            .parse()
+                            .map_err(|e| {
+                                Error::Parsing(format!(
+                                    "Failed to parse timeout from response as u32: {}",
+                                    e
+                                ))
+                            })?,
+                    ));
+                }
 
                 if response_status == StatusCode::FOUND {
-
                     match self.client.get(URL::CONNECT).send().await {
-                        Ok(response) => {
-                            match response.headers().get(LOCATION) {
-                                Some(location) => {
-                                    let location = location.to_str();
-                                    if  location.is_err() {
-                                        return Err(Error::Parsing("failed to parse location header to str".to_string()))
-                                    }
-                                    let location = location.unwrap();
-
-                                    match self.client.get(location).send().await {
-                                        Ok(_) => Ok(()),
-                                        Err(e) => {
-                                            Err(Error::Network(format!("error getting login URL header: {}", e)))
-                                        }
-                                    }
+                        Ok(response) => match response.headers().get(LOCATION) {
+                            Some(location) => {
+                                let location = location.to_str();
+                                if location.is_err() {
+                                    return Err(Error::Parsing(
+                                        "failed to parse location header to str".to_string(),
+                                    ));
                                 }
-                                None => {
-                                    Err(Error::Network("error getting login URL".to_string()))
+                                let location = location.unwrap();
+
+                                match self.client.get(location).send().await {
+                                    Ok(_) => Ok(()),
+                                    Err(e) => Err(Error::Network(format!(
+                                        "error getting login URL header: {}",
+                                        e
+                                    ))),
                                 }
                             }
-                        }
-                        Err(e) => {
-                            Err(Error::Network(format!("{}", e)))
-                        }
+                            None => Err(Error::Network("error getting login URL".to_string())),
+                        },
+                        Err(e) => Err(Error::Network(format!("{}", e))),
                     }
                 } else {
                     Err(Error::Credentials("Wrong credentials!".to_string()))
                 }
             }
-            Err(e) => {
-                Err(Error::Network(e.to_string()))
-            }
+            Err(e) => Err(Error::Network(e.to_string())),
         }
     }
 
@@ -160,27 +183,34 @@ impl Account {
         };
         let param = [("name", sid)];
         match self.client.get(URL::LOGIN_AJAX).form(&param).send().await {
-            Ok(_) => {
-                Ok(())
-            }
-            Err(e) => {
-                Err(Error::Network(format!("failed to refresh session: {}", e).to_string()))
-            }
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Network(
+                format!("failed to refresh session: {}", e).to_string(),
+            )),
         }
     }
 
     pub async fn fetch_account_data(&self) -> Result<BTreeMap<String, String>, Error> {
-        match self.client.get(URL::USER_DATA).query(&[("a", "userData")]).send().await {
+        match self
+            .client
+            .get(URL::USER_DATA)
+            .query(&[("a", "userData")])
+            .send()
+            .await
+        {
             Ok(response) => {
                 let document = Html::parse_document(&*response.text().await.unwrap());
-                let user_data_table_body_selector = Selector::parse("div.col-md-12 table.table.table-striped tbody").unwrap();
+                let user_data_table_body_selector =
+                    Selector::parse("div.col-md-12 table.table.table-striped tbody").unwrap();
 
                 let row_selector = Selector::parse("tr").unwrap();
                 let key_selector = Selector::parse("td").unwrap();
 
                 let mut result = BTreeMap::new();
 
-                if let Some(user_data_table_body) = document.select(&user_data_table_body_selector).next() {
+                if let Some(user_data_table_body) =
+                    document.select(&user_data_table_body_selector).next()
+                {
                     for row in user_data_table_body.select(&row_selector) {
                         let cells: Vec<_> = row.select(&key_selector).collect();
                         if cells.len() >= 2 {
@@ -193,9 +223,9 @@ impl Account {
                 }
                 Ok(result)
             }
-            Err(e) => {
-                Err(Error::Network(format!("failed to fetch account data: {}", e).to_string()))
-            }
+            Err(e) => Err(Error::Network(
+                format!("failed to fetch account data: {}", e).to_string(),
+            )),
         }
     }
 
@@ -209,7 +239,6 @@ impl Account {
 
     /// Returns a vector of supported features (for the [Account])
     pub async fn get_features(&self) -> Result<Vec<Feature>, Error> {
-
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "lowercase")]
         struct Entry {
@@ -219,10 +248,16 @@ impl Account {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "lowercase")]
         struct Entries {
-            entrys: Vec<Entry>
+            entrys: Vec<Entry>,
         }
 
-        match self.client.get(URL::START).query(&[("a", "ajax"), ("f", "apps")]).send().await {
+        match self
+            .client
+            .get(URL::START)
+            .query(&[("a", "ajax"), ("f", "apps")])
+            .send()
+            .await
+        {
             Ok(response) => {
                 let text = response.text().await.unwrap();
                 let entries = serde_json::from_str::<Entries>(&text).unwrap();
@@ -241,7 +276,7 @@ impl Account {
 
                 Ok(features)
             }
-            Err(e) => Err(Error::Network(e.to_string()))
+            Err(e) => Err(Error::Network(e.to_string())),
         }
     }
 
@@ -261,15 +296,23 @@ pub struct AccountSecrets {
     pub school_id: i32,
     pub username: String,
     pub password: String,
-    pub untis_secrets: Option<UntisSecrets>
+    pub untis_secrets: Option<UntisSecrets>,
 }
 
 impl AccountSecrets {
     pub fn new(school_id: i32, username: String, password: String) -> AccountSecrets {
-        Self { school_id, username, password, untis_secrets: None }
+        Self {
+            school_id,
+            username,
+            password,
+            untis_secrets: None,
+        }
     }
 
-    pub async fn from_encrypted(data: &[u8], key: &[u8; 32]) -> Result<AccountSecrets, CryptorError> {
+    pub async fn from_encrypted(
+        data: &[u8],
+        key: &[u8; 32],
+    ) -> Result<AccountSecrets, CryptorError> {
         decrypt_any(data, key).await
     }
 
@@ -290,6 +333,11 @@ pub struct UntisSecrets {
 
 impl UntisSecrets {
     pub fn new(school_name: String, username: String, password: String) -> UntisSecrets {
-        Self { school_name, username, password }
+        Self {
+            school_name,
+            username,
+            password,
+        }
     }
 }
+
