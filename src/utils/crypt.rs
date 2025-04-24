@@ -151,8 +151,7 @@ async fn get_public_key(client: &Client) -> Result<RsaPublicKey, String> {
     }
 }
 
-/// Encrypts data that can be sent to lanis
-pub async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> String {
+pub(crate) async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> String {
     let salt = random::<[u8; 8]>();
 
     const KEY_SIZE: usize = 256;
@@ -188,8 +187,7 @@ pub async fn encrypt_lanis_data(data: &[u8], public_key: &String) -> String {
     result
 }
 
-/// Allows to decrypt encoded text from raw lanis html
-pub async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) -> String {
+pub(crate) async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) -> String {
     let exp = Regex::new(r"<encoded>(.*?)</encoded>").unwrap();
 
     let mut replaced_html = html_string.to_string();
@@ -205,8 +203,7 @@ pub async fn decrypt_lanis_encoded_tags(html_string: &str, key: &String) -> Stri
     replaced_html.to_string()
 }
 
-/// Allows to decrypt string from lanis
-pub async fn decrypt_lanis_string_with_key(data: &str, public_key: &String) -> Result<String, String> {
+pub(crate) async fn decrypt_lanis_string_with_key(data: &str, public_key: &String) -> Result<String, String> {
     match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data) {
         Ok(data) => {
             let result = decrypt_lanis_with_key(&data, &public_key).await?;
@@ -220,8 +217,7 @@ pub async fn decrypt_lanis_string_with_key(data: &str, public_key: &String) -> R
     }
 }
 
-/// Allows to decrypt raw bytes from lanis
-pub async fn decrypt_lanis_with_key(data: &Vec<u8>, public_key: &String) -> Result<Vec<u8>, String> {
+pub(crate) async fn decrypt_lanis_with_key(data: &Vec<u8>, public_key: &String) -> Result<Vec<u8>, String> {
     fn is_salted(encrypted_data: &Vec<u8>) -> bool {
         match std::str::from_utf8(&encrypted_data[0..8]) {
             Ok(s) => s == "Salted__",
@@ -266,8 +262,7 @@ pub enum CryptorError {
     Decryption(String),
 }
 
-/// Allows to encrypt every type that implements Clone & Serialize. (as JSON)
-pub async fn encrypt_any<T: Clone + Serialize>(data: &T, key: &[u8; 32]) -> Result<Vec<u8>, CryptorError> {
+pub(crate) async fn encrypt_any<T: Clone + Serialize>(data: &T, key: &[u8; 32]) -> Result<Vec<u8>, CryptorError> {
     let iv = [0; 16];
 
     let serialized = serde_json::to_vec(&data).map_err(|e| CryptorError::Serialization(e.to_string()))?;
@@ -278,8 +273,7 @@ pub async fn encrypt_any<T: Clone + Serialize>(data: &T, key: &[u8; 32]) -> Resu
     Ok(result)
 }
 
-/// Decrypts any previous encrypted type
-pub async fn decrypt_any<T: Clone +  DeserializeOwned>(data: &[u8], key: &[u8; 32]) -> Result<T, CryptorError> {
+pub(crate) async fn decrypt_any<T: Clone +  DeserializeOwned>(data: &[u8], key: &[u8; 32]) -> Result<T, CryptorError> {
     let iv = [0; 16];
 
     let decryptor = Aes256CbcDec::new(&(*key).into(), &iv.into());
