@@ -1,3 +1,4 @@
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct URL;
 
 /// Just a collection of URLS
