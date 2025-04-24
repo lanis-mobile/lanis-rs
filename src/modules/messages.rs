@@ -1,13 +1,13 @@
-use std::fmt::Display;
-use chrono::{DateTime, Utc};
-use markup5ever::interface::TreeSink;
-use reqwest::{Client, Response};
-use reqwest::header::HeaderValue;
-use scraper::{Html, Selector};
-use serde::{Deserialize, Serialize};
 use crate::base::account::AccountType;
 use crate::utils::constants::URL;
 use crate::utils::crypt::{decrypt_lanis_string_with_key, encrypt_lanis_data, LanisKeyPair};
+use chrono::{DateTime, Utc};
+use markup5ever::interface::TreeSink;
+use reqwest::header::HeaderValue;
+use reqwest::{Client, Response};
+use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct ConversationOverview {
@@ -26,9 +26,17 @@ impl ConversationOverview {
         let mut html = Html::parse_fragment(&html_string);
 
         let i_selector = Selector::parse("i.fas").unwrap();
-        let _ = html.to_owned().select(&i_selector).map(|element| html.remove_from_parent(&element.id()));
+        let _ = html
+            .to_owned()
+            .select(&i_selector)
+            .map(|element| html.remove_from_parent(&element.id()));
 
-        Ok(html.root_element().text().collect::<String>().trim().to_string())
+        Ok(html
+            .root_element()
+            .text()
+            .collect::<String>()
+            .trim()
+            .to_string())
     }
 
     /// Parses a [Participant] from the name html <br>
@@ -43,21 +51,50 @@ impl ConversationOverview {
         let i_selector_parent = Selector::parse("i.fas.fa-user-circle").unwrap();
 
         let account_type = {
-            if html.select(&i_selector_student).nth(0).is_some() { AccountType::Student }
-            else if html.select(&i_selector_teacher).nth(0).is_some() { AccountType::Teacher }
-            else if html.select(&i_selector_parent).nth(0).is_some() { AccountType::Parent  }
-            else { AccountType::Unknown }
+            if html.select(&i_selector_student).nth(0).is_some() {
+                AccountType::Student
+            } else if html.select(&i_selector_teacher).nth(0).is_some() {
+                AccountType::Teacher
+            } else if html.select(&i_selector_parent).nth(0).is_some() {
+                AccountType::Parent
+            } else {
+                AccountType::Unknown
+            }
         };
 
-        let _ = html.to_owned().select(&i_selector).map(|element| html.remove_from_parent(&element.id()));
-        let name = html.root_element().text().collect::<String>().trim().to_string();
+        let _ = html
+            .to_owned()
+            .select(&i_selector)
+            .map(|element| html.remove_from_parent(&element.id()));
+        let name = html
+            .root_element()
+            .text()
+            .collect::<String>()
+            .trim()
+            .to_string();
 
-        Ok(Participant {id: None, name, account_type})
+        Ok(Participant {
+            id: None,
+            name,
+            account_type,
+        })
     }
 
     /// Get all [ConversationOverview]'s (hidden and visible)
-    pub async fn get_root(client: &Client, keys: &LanisKeyPair) -> Result<Vec<ConversationOverview>, Error> {
-        match client.post(URL::MESSAGES).form(&[("a", "headers"), ("getType", "All"), ("last", "0")]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
+    pub async fn get_root(
+        client: &Client,
+        keys: &LanisKeyPair,
+    ) -> Result<Vec<ConversationOverview>, Error> {
+        match client
+            .post(URL::MESSAGES)
+            .form(&[("a", "headers"), ("getType", "All"), ("last", "0")])
+            .header(
+                "X-Requested-With",
+                "XMLHttpRequest".parse::<HeaderValue>().unwrap(),
+            )
+            .send()
+            .await
+        {
             Ok(response) => {
                 #[derive(Serialize, Deserialize)]
                 struct EncryptedResponseData {
@@ -65,11 +102,28 @@ impl ConversationOverview {
                     rows: String,
                 }
 
-                let enc_text = response.text().await.map_err(|e| Error::Parsing(format!("failed to parse response as text '{}'", e)))?;
-                let enc_data = serde_json::from_str::<EncryptedResponseData>(&enc_text).map_err(|e| Error::Parsing(format!("failed to parse response JSON as EncryptedResponseData '{}'", e)))?;
+                let enc_text = response.text().await.map_err(|e| {
+                    Error::Parsing(format!("failed to parse response as text '{}'", e))
+                })?;
+                let enc_data =
+                    serde_json::from_str::<EncryptedResponseData>(&enc_text).map_err(|e| {
+                        Error::Parsing(format!(
+                            "failed to parse response JSON as EncryptedResponseData '{}'",
+                            e
+                        ))
+                    })?;
 
-                let dec_rows_json_invalid = decrypt_lanis_string_with_key(&enc_data.rows, &keys.public_key_string).await.map_err(|e| Error::Crypto(format!("failed to decrypt rows '{}'", e)))?;
-                let dec_rows_json = format!("{}]", dec_rows_json_invalid.rsplit_once(']').unwrap_or(("[{}", "]")).0);
+                let dec_rows_json_invalid =
+                    decrypt_lanis_string_with_key(&enc_data.rows, &keys.public_key_string)
+                        .await
+                        .map_err(|e| Error::Crypto(format!("failed to decrypt rows '{}'", e)))?;
+                let dec_rows_json = format!(
+                    "{}]",
+                    dec_rows_json_invalid
+                        .rsplit_once(']')
+                        .unwrap_or(("[{}", "]"))
+                        .0
+                );
 
                 #[derive(Serialize, Deserialize, Debug)]
                 #[serde(rename_all = "PascalCase")]
@@ -93,22 +147,44 @@ impl ConversationOverview {
 
                 impl From<ConversationRowJson> for Result<ConversationOverview, Error> {
                     fn from(json_row: ConversationRowJson) -> Result<ConversationOverview, Error> {
-                        let id = json_row.id.parse::<i32>().map_err(|e| Error::Parsing(format!("failed to parse id as i32 '{}'", e)))?;
+                        let id = json_row.id.parse::<i32>().map_err(|e| {
+                            Error::Parsing(format!("failed to parse id as i32 '{}'", e))
+                        })?;
                         let uid = json_row.uniquid.to_owned();
-                        let mut sender = ConversationOverview::parse_participant(&json_row.sender_name)?;
-                        let sender_id = json_row.sender.parse::<i32>().map_err(|e| Error::Parsing(format!("failed to parse sender as i32 '{}'", e)))?;
+                        let mut sender =
+                            ConversationOverview::parse_participant(&json_row.sender_name)?;
+                        let sender_id = json_row.sender.parse::<i32>().map_err(|e| {
+                            Error::Parsing(format!("failed to parse sender as i32 '{}'", e))
+                        })?;
                         sender.id = Some(sender_id);
                         let receiver = {
                             let mut result = Vec::new();
                             for receiver in &json_row.empf {
                                 result.push(ConversationOverview::parse_participant(&receiver)?);
-                            };
+                            }
                             result
                         };
                         let subject = json_row.betreff.to_owned();
-                        let date_time = DateTime::from_timestamp(json_row.datum_unix.to_owned(), 0).unwrap_or(DateTime::UNIX_EPOCH);
-                        let read = match json_row.unread.unwrap_or(0) { 0 => true, 1 => false, _ => return Err(Error::Parsing(String::from("failed to parse unread as bool (read) 'unexpected i32'"))) };
-                        let visible = match json_row.papierkorb.as_str() { "ja" => false, "nein" => true, _ => return Err(Error::Parsing(String::from("failed to parse visible as bool 'unexpected &str'"))) };
+                        let date_time = DateTime::from_timestamp(json_row.datum_unix.to_owned(), 0)
+                            .unwrap_or(DateTime::UNIX_EPOCH);
+                        let read = match json_row.unread.unwrap_or(0) {
+                            0 => true,
+                            1 => false,
+                            _ => {
+                                return Err(Error::Parsing(String::from(
+                                    "failed to parse unread as bool (read) 'unexpected i32'",
+                                )))
+                            }
+                        };
+                        let visible = match json_row.papierkorb.as_str() {
+                            "ja" => false,
+                            "nein" => true,
+                            _ => {
+                                return Err(Error::Parsing(String::from(
+                                    "failed to parse visible as bool 'unexpected &str'",
+                                )))
+                            }
+                        };
 
                         Ok(ConversationOverview {
                             id,
@@ -118,28 +194,41 @@ impl ConversationOverview {
                             subject,
                             date_time,
                             read,
-                            visible
+                            visible,
                         })
                     }
                 }
 
-                let json_rows = serde_json::from_str::<Vec<ConversationRowJson>>(&dec_rows_json).map_err(|e| Error::Parsing(format!("failed to parse rows of decrypted json '{}'", e)))?;
+                let json_rows = serde_json::from_str::<Vec<ConversationRowJson>>(&dec_rows_json)
+                    .map_err(|e| {
+                        Error::Parsing(format!("failed to parse rows of decrypted json '{}'", e))
+                    })?;
                 let overviews = {
                     let mut result: Vec<ConversationOverview> = Vec::new();
                     for json_row in json_rows {
-                        result.push(<ConversationRowJson as Into<Result<ConversationOverview, Error>>>::into(json_row)?);
+                        result.push(<ConversationRowJson as Into<
+                            Result<ConversationOverview, Error>,
+                        >>::into(json_row)?);
                     }
                     result
                 };
 
                 Ok(overviews)
             }
-            Err(error) => Err(Error::Network(format!("failed to get conversations  '{}'", error)))
+            Err(error) => Err(Error::Network(format!(
+                "failed to get conversations  '{}'",
+                error
+            ))),
         }
     }
 
     async fn parse_recycle_response(&mut self, response: Response) -> Result<bool, Error> {
-        let response_bool = !response.text().await.map_err(|e| Error::Parsing(format!("failed to get text of response '{}'", e)))?.parse::<bool>().map_err(|e| Error::Parsing(format!("failed to parse response as bool '{}'", e)))?;
+        let response_bool = !response
+            .text()
+            .await
+            .map_err(|e| Error::Parsing(format!("failed to get text of response '{}'", e)))?
+            .parse::<bool>()
+            .map_err(|e| Error::Parsing(format!("failed to parse response as bool '{}'", e)))?;
         let result = response_bool != self.visible;
         self.visible = response_bool;
         Ok(result)
@@ -147,24 +236,43 @@ impl ConversationOverview {
 
     /// Hides a visible conversation and returns the result if the hiding succeeded
     pub async fn hide(&mut self, client: &Client) -> Result<bool, Error> {
-        match client.post(URL::MESSAGES).form(&[("a", "deleteAll"), ("uniqid", self.uid.as_str())]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
-            Ok(response) => {
-                self.parse_recycle_response(response).await
-            },
-            Err(e) => Err(Error::Network(format!("failed to hide conversation '{}'", e)))
+        match client
+            .post(URL::MESSAGES)
+            .form(&[("a", "deleteAll"), ("uniqid", self.uid.as_str())])
+            .header(
+                "X-Requested-With",
+                "XMLHttpRequest".parse::<HeaderValue>().unwrap(),
+            )
+            .send()
+            .await
+        {
+            Ok(response) => self.parse_recycle_response(response).await,
+            Err(e) => Err(Error::Network(format!(
+                "failed to hide conversation '{}'",
+                e
+            ))),
         }
     }
 
     /// Shows a hidden conversation and returns the result if the hiding succeeded
     pub async fn show(&mut self, client: &Client) -> Result<bool, Error> {
-        match client.post(URL::MESSAGES).form(&[("a", "recycleMsg"), ("uniqid", self.uid.as_str())]).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
-            Ok(response) => {
-                Ok(!self.parse_recycle_response(response).await?)
-            },
-            Err(e) => Err(Error::Network(format!("failed to show conversation '{}'", e)))
+        match client
+            .post(URL::MESSAGES)
+            .form(&[("a", "recycleMsg"), ("uniqid", self.uid.as_str())])
+            .header(
+                "X-Requested-With",
+                "XMLHttpRequest".parse::<HeaderValue>().unwrap(),
+            )
+            .send()
+            .await
+        {
+            Ok(response) => Ok(!self.parse_recycle_response(response).await?),
+            Err(e) => Err(Error::Network(format!(
+                "failed to show conversation '{}'",
+                e
+            ))),
         }
     }
-
 
     /// Get the full [Conversation]
     pub async fn get(&self, client: &Client, keys: &LanisKeyPair) -> Result<Conversation, Error> {
@@ -173,7 +281,17 @@ impl ConversationOverview {
         let query = [("a", "read"), ("msg", self.uid.as_str())];
         let enc_uid = enc_uid.await;
         let form = [("a", "read"), ("uniqid", enc_uid.as_str())];
-        match client.post(URL::MESSAGES).query(&query).form(&form).header("X-Requested-With", "XMLHttpRequest".parse::<HeaderValue>().unwrap()).send().await {
+        match client
+            .post(URL::MESSAGES)
+            .query(&query)
+            .form(&form)
+            .header(
+                "X-Requested-With",
+                "XMLHttpRequest".parse::<HeaderValue>().unwrap(),
+            )
+            .send()
+            .await
+        {
             Ok(response) => {
                 #[derive(Serialize, Deserialize, Debug)]
                 struct EncJsonConversation {
@@ -211,7 +329,6 @@ impl ConversationOverview {
                     #[serde(rename = "Sender")]
                     sender_id: String,
                     sender_type: String,
-
                 }
 
                 #[derive(Serialize, Deserialize, Debug)]
@@ -275,45 +392,112 @@ impl ConversationOverview {
                     answer_to_hidden: bool,
                 }
 
-                let text = response.text().await.map_err(|e| Error::Parsing(format!("failed to parse text of response '{}'", e)))?;
-                let encrypted_json = serde_json::from_str::<EncJsonConversation>(&text).map_err(|e| Error::Parsing(format!("failed to parse encrypted json '{}'", e)))?;
+                let text = response.text().await.map_err(|e| {
+                    Error::Parsing(format!("failed to parse text of response '{}'", e))
+                })?;
+                let encrypted_json =
+                    serde_json::from_str::<EncJsonConversation>(&text).map_err(|e| {
+                        Error::Parsing(format!("failed to parse encrypted json '{}'", e))
+                    })?;
                 let decrypted_json = {
                     let mut result = encrypted_json;
-                    let decrypted_message = decrypt_lanis_string_with_key(&result.message, &keys.public_key_string).await.map_err(|e| Error::Crypto(format!("failed to decrypt message json '{}'", e)))?;
-                    result.message = format!("{}}}", decrypted_message.rsplit_once("}").unwrap_or_default().0);
+                    let decrypted_message =
+                        decrypt_lanis_string_with_key(&result.message, &keys.public_key_string)
+                            .await
+                            .map_err(|e| {
+                                Error::Crypto(format!("failed to decrypt message json '{}'", e))
+                            })?;
+                    result.message = format!(
+                        "{}}}",
+                        decrypted_message.rsplit_once("}").unwrap_or_default().0
+                    );
                     result
                 };
-                let decrypted_json_message_field = serde_json::from_str::<DecJsonMessageField>(&decrypted_json.message).map_err(|e| Error::Parsing(format!("failed to parse message field in decrypted json '{}'", e)))?;
+                let decrypted_json_message_field = serde_json::from_str::<DecJsonMessageField>(
+                    // Who is responseble for that shit
+                    &decrypted_json.message.replace(
+                        "\"AntwortAufAusgeblendeteNachricht\":\"on\"",
+                        "\"AntwortAufAusgeblendeteNachricht\":true",
+                    ),
+                )
+                .map_err(|e| {
+                    Error::Parsing(format!(
+                        "failed to parse message field in decrypted json '{}'",
+                        e
+                    ))
+                })?;
 
                 fn parse_messages(json: &DecJsonMessageField) -> Result<Vec<Message>, Error> {
                     let mut messages = Vec::new();
                     messages.push({
-                        let id = json.id.parse().map_err(|e| Error::Parsing(format!("failed to parse message id '{}'", e)))?;
+                        let id = json.id.parse().map_err(|e| {
+                            Error::Parsing(format!("failed to parse message id '{}'", e))
+                        })?;
                         let mut date_split = json.date.split_once(" ").unwrap_or_default();
                         let mut date = date_split.0.to_string();
-                        if date_split.0 == "heute" { let new_date = format!("{}", chrono::Local::now().date_naive().format("%d.%m.%Y")); date = new_date }
-                        if date_split.0 == "gestern" { let new_date = format!("{}", (chrono::Local::now() - chrono::Duration::days(1)).date_naive().format("%d.%m.%Y")); date = new_date }
+                        if date_split.0 == "heute" {
+                            let new_date =
+                                format!("{}", chrono::Local::now().date_naive().format("%d.%m.%Y"));
+                            date = new_date
+                        }
+                        if date_split.0 == "gestern" {
+                            let new_date = format!(
+                                "{}",
+                                (chrono::Local::now() - chrono::Duration::days(1))
+                                    .date_naive()
+                                    .format("%d.%m.%Y")
+                            );
+                            date = new_date
+                        }
                         date_split.0 = date.as_str();
-                        let date = date_time_string_to_datetime(date_split.0, &format!("{}:00", date_split.1)).map_err(|e| Error::DateTime(format!("failed to parse date & time of message '{:?}'", e)))?.to_utc();
+                        let date = date_time_string_to_datetime(
+                            date_split.0,
+                            &format!("{}:00", date_split.1),
+                        )
+                        .map_err(|e| {
+                            Error::DateTime(format!(
+                                "failed to parse date & time of message '{:?}'",
+                                e
+                            ))
+                        })?
+                        .to_utc();
                         let author = {
-                            let id = Some(json.sender.parse().map_err(|e| Error::Parsing(format!("failed to parse sender id '{}'", e)))?);
+                            let id = Some(json.sender.parse().map_err(|e| {
+                                Error::Parsing(format!("failed to parse sender id '{}'", e))
+                            })?);
                             let name = ConversationOverview::parse_name(&json.sender_name)?;
                             let account_type = match json.sender_type.as_str() {
                                 "Teilnehmer" => AccountType::Student,
                                 "Betreuer" => AccountType::Teacher,
                                 "Eltern" => AccountType::Parent,
-                                _ => AccountType::Unknown
+                                _ => AccountType::Unknown,
                             };
 
-                            Participant { id, name, account_type }
+                            Participant {
+                                id,
+                                name,
+                                account_type,
+                            }
                         };
 
                         let own = json.own.to_owned();
                         let content = json.content.to_owned();
-                        let html_content = Html::parse_document(&format!("<body>{}</body>", content));
-                        let content = html_content.root_element().text().collect::<String>().trim().to_owned();
+                        let html_content =
+                            Html::parse_document(&format!("<body>{}</body>", content));
+                        let content = html_content
+                            .root_element()
+                            .text()
+                            .collect::<String>()
+                            .trim()
+                            .to_owned();
 
-                        Message { id, date, author, own, content }
+                        Message {
+                            id,
+                            date,
+                            author,
+                            own,
+                            content,
+                        }
                     });
 
                     for reply in &json.replies {
@@ -326,7 +510,10 @@ impl ConversationOverview {
 
                 let messages = parse_messages(&decrypted_json_message_field)?;
 
-                async fn parse_participants(messages: &Vec<Message>, receivers: &Vec<Participant>) -> Result<Vec<Participant>, Error> {
+                async fn parse_participants(
+                    messages: &Vec<Message>,
+                    receivers: &Vec<Participant>,
+                ) -> Result<Vec<Participant>, Error> {
                     let mut participants = Vec::new();
                     participants.append(receivers.to_owned().as_mut());
 
@@ -349,16 +536,23 @@ impl ConversationOverview {
                         Ok(match string.as_str() {
                             "ja" => true,
                             "nein" => false,
-                            _ => false
+                            _ => false,
                         })
                     } else {
-                        Err(Error::Parsing(String::from("group chat entry is missing 'is None'")))
+                        Err(Error::Parsing(String::from(
+                            "group chat entry is missing 'is None'",
+                        )))
                     }
                 }
 
-                let group_chat = match_german_string_bool(&decrypted_json_message_field.group_only).await?;
-                let only_private_answers = match_german_string_bool(&decrypted_json_message_field.private_answer_only).await?;
-                let can_reply = !match_german_string_bool(&decrypted_json_message_field.no_answer_allowed).await?;
+                let group_chat =
+                    match_german_string_bool(&decrypted_json_message_field.group_only).await?;
+                let only_private_answers =
+                    match_german_string_bool(&decrypted_json_message_field.private_answer_only)
+                        .await?;
+                let can_reply =
+                    !match_german_string_bool(&decrypted_json_message_field.no_answer_allowed)
+                        .await?;
 
                 let mut amount_students = decrypted_json_message_field.stats.participants;
                 let mut amount_teachers = decrypted_json_message_field.stats.supervisors;
@@ -368,7 +562,7 @@ impl ConversationOverview {
                     AccountType::Student => amount_students += 1,
                     AccountType::Teacher => amount_teachers += 1,
                     AccountType::Parent => amount_parents += 1,
-                    AccountType::Unknown => ()
+                    AccountType::Unknown => (),
                 }
 
                 let amount_participants = amount_students + amount_teachers + amount_parents;
@@ -401,14 +595,13 @@ impl ConversationOverview {
 
                     participants,
 
-                    messages
+                    messages,
                 })
             }
-            Err(e) => Err(Error::Network(format!("failed to post message '{e}'")))
+            Err(e) => Err(Error::Network(format!("failed to post message '{e}'"))),
         }
     }
 }
-
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Conversation {
@@ -466,7 +659,12 @@ impl Conversation {
     /// Reply to a [Conversation] (send a message) <br>
     /// `message` supports lanis formatting (see [here](https://support.schulportal.hessen.de/knowledgebase.php?article=664) for more info) <br>
     /// returns the UID of the new message (None if new message failed)
-    pub async fn reply(&self, message: &str, client: &Client, key_pair: &LanisKeyPair) -> Result<Option<String>, Error> {
+    pub async fn reply(
+        &self,
+        message: &str,
+        client: &Client,
+        key_pair: &LanisKeyPair,
+    ) -> Result<Option<String>, Error> {
         #[derive(Serialize, Deserialize)]
         struct JSON {
             to: String,
@@ -482,9 +680,9 @@ impl Conversation {
         let sender_id = match self.messages.get(0) {
             Some(msg) => match msg.author.id {
                 Some(id) => id,
-                None => return Err(Error::Parsing(String::from("no author")))
+                None => return Err(Error::Parsing(String::from("no author"))),
             },
-            None => return Err(Error::Parsing(String::from("no messages")))
+            None => return Err(Error::Parsing(String::from("no messages"))),
         };
 
         fn bool_to_german(bool: &bool) -> String {
@@ -500,13 +698,20 @@ impl Conversation {
             group_only: bool_to_german(&self.group_chat),
             private_answers_only: bool_to_german(&self.only_private_answers),
             message: message.trim().to_string(),
-            replay_to_message: self.uid.to_owned()
+            replay_to_message: self.uid.to_owned(),
         };
 
-        let json_string = serde_json::to_string(&json).map_err(|e| Error::Parsing(format!("failed to serialize message '{e}'")))?;
-        let enc_json_string = encrypt_lanis_data(json_string.as_bytes(), &key_pair.public_key_string).await;
-        
-        match client.post(URL::MESSAGES).form(&[("a", "reply"), ("c", enc_json_string.as_str())]).send().await {
+        let json_string = serde_json::to_string(&json)
+            .map_err(|e| Error::Parsing(format!("failed to serialize message '{e}'")))?;
+        let enc_json_string =
+            encrypt_lanis_data(json_string.as_bytes(), &key_pair.public_key_string).await;
+
+        match client
+            .post(URL::MESSAGES)
+            .form(&[("a", "reply"), ("c", enc_json_string.as_str())])
+            .send()
+            .await
+        {
             Ok(response) => {
                 #[derive(Serialize, Deserialize)]
                 struct ResponseJson {
@@ -515,13 +720,18 @@ impl Conversation {
                     id: String,
                 }
 
-                let text = response.text().await.map_err(|e| Error::Parsing(format!("failed to parse response as text: {}", e)))?;
-                let json: ResponseJson = serde_json::from_str(&text).map_err(|e| Error::Parsing(format!("failed to deserialize JSON: {}", e)))?;
+                let text = response.text().await.map_err(|e| {
+                    Error::Parsing(format!("failed to parse response as text: {}", e))
+                })?;
+                let json: ResponseJson = serde_json::from_str(&text)
+                    .map_err(|e| Error::Parsing(format!("failed to deserialize JSON: {}", e)))?;
 
-                if !json.back { return Ok(None) }
+                if !json.back {
+                    return Ok(None);
+                }
                 Ok(Some(json.id))
             }
-            Err(e) => Err(Error::Network(format!("failed to send message '{e}'")))
+            Err(e) => Err(Error::Network(format!("failed to send message '{e}'"))),
         }
     }
 }
@@ -532,13 +742,13 @@ pub struct Participant {
     /// The name of the [Participant]
     pub name: String,
     /// may be unknown if the [Participant] never wrote something in the chat
-    pub account_type: AccountType
+    pub account_type: AccountType,
 }
 
 #[allow(unused_imports)]
 use crate::base::account::Account;
-use crate::Error;
 use crate::utils::datetime::date_time_string_to_datetime;
+use crate::Error;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Message {
@@ -562,7 +772,7 @@ pub enum ConversationType {
     /// Answers to everyone
     GroupOnly,
     /// Private messages among themselves possible
-    OpenChat
+    OpenChat,
 }
 
 impl ConversationType {
@@ -583,7 +793,7 @@ impl Display for ConversationType {
             ConversationType::NoAnswersAllowed => write!(f, "NoAnswersAllowed"),
             ConversationType::PrivateAnswersOnly => write!(f, "PrivateAnswersOnly"),
             ConversationType::GroupOnly => write!(f, "GroupOnly"),
-            ConversationType::OpenChat => write!(f, "OpenChat")
+            ConversationType::OpenChat => write!(f, "OpenChat"),
         }
     }
 }
@@ -592,7 +802,12 @@ impl Display for ConversationType {
 pub async fn can_choose_type(client: &Client) -> Result<bool, Error> {
     match client.get(URL::MESSAGES).send().await {
         Ok(response) => {
-            let html = Html::parse_document(&response.text().await.map_err(|e| Error::Parsing(format!("failed to parse message '{:?}'", e)))?);
+            let html = Html::parse_document(
+                &response
+                    .text()
+                    .await
+                    .map_err(|e| Error::Parsing(format!("failed to parse message '{:?}'", e)))?,
+            );
             let options_selector = Selector::parse("#MsgOptions").unwrap();
 
             Ok(html.select(&options_selector).nth(0).is_some())
@@ -612,16 +827,27 @@ pub struct Receiver {
 ///
 /// NOTE: Everything under 2 chars will return an empty [Vec<Receiver>]
 pub async fn search_receiver(query: &str, client: &Client) -> Result<Vec<Receiver>, Error> {
-    if query.len() < 2 { return Ok(Vec::new()) }
-    
-    match client.get(URL::MESSAGES).query(&[("a", "searchRecipt"), ("q", query)]).send().await {
+    if query.len() < 2 {
+        return Ok(Vec::new());
+    }
+
+    match client
+        .get(URL::MESSAGES)
+        .query(&[("a", "searchRecipt"), ("q", query)])
+        .send()
+        .await
+    {
         Ok(response) => {
-            let text = response.text().await.map_err(|e| Error::Parsing(format!("failed to parse response as text '{:?}'", e)))?;
-            if text.contains("\"items\":null") { return Ok(Vec::new()) }
+            let text = response.text().await.map_err(|e| {
+                Error::Parsing(format!("failed to parse response as text '{:?}'", e))
+            })?;
+            if text.contains("\"items\":null") {
+                return Ok(Vec::new());
+            }
 
             #[derive(Serialize, Deserialize)]
             struct JSON {
-                items: Vec<JSONItem>
+                items: Vec<JSONItem>,
             }
 
             #[derive(Serialize, Deserialize)]
@@ -632,25 +858,33 @@ pub async fn search_receiver(query: &str, client: &Client) -> Result<Vec<Receive
                 text: String,
             }
 
-            let json: JSON = serde_json::from_str(&text).map_err(|e| Error::Parsing(format!("failed to parse response as JSON: {}", e)))?;
+            let json: JSON = serde_json::from_str(&text)
+                .map_err(|e| Error::Parsing(format!("failed to parse response as JSON: {}", e)))?;
 
             let mut result = Vec::new();
 
             for item in json.items {
                 let id = item.id;
                 let name = item.text;
-                let account_type = match item.account_type.as_str() { // TODO: Parent accounts
+                let account_type = match item.account_type.as_str() {
+                    // TODO: Parent accounts
                     "sus" => AccountType::Student,
                     "lul" => AccountType::Teacher,
-                    _ => AccountType::Unknown
+                    _ => AccountType::Unknown,
                 };
 
-                result.push(Receiver { id, name, account_type })
+                result.push(Receiver {
+                    id,
+                    name,
+                    account_type,
+                })
             }
 
             Ok(result)
         }
-        Err(e) => Err(Error::Network(format!("failed to perform a search query '{e}'"))),
+        Err(e) => Err(Error::Network(format!(
+            "failed to perform a search query '{e}'"
+        ))),
     }
 }
 
@@ -661,7 +895,13 @@ pub async fn search_receiver(query: &str, client: &Client) -> Result<Vec<Receive
 /// Text should not be empty <br> <br>
 ///
 /// returns the new UID of the Conversation if creation was successful
-pub async fn create_conversation(receiver: &Vec<Receiver>, subject: &str, text: &str, client: &Client, key_pair: &LanisKeyPair) -> Result<Option<String>, Error> {
+pub async fn create_conversation(
+    receiver: &Vec<Receiver>,
+    subject: &str,
+    text: &str,
+    client: &Client,
+    key_pair: &LanisKeyPair,
+) -> Result<Option<String>, Error> {
     #[derive(Serialize, Deserialize)]
     struct JSONItem {
         name: String,
@@ -685,10 +925,16 @@ pub async fn create_conversation(receiver: &Vec<Receiver>, subject: &str, text: 
         })
     }
 
-    let json = serde_json::to_string(&json_vec).map_err(|e| Error::Parsing(format!("failed to serialize JSON: {}", e)))?;
+    let json = serde_json::to_string(&json_vec)
+        .map_err(|e| Error::Parsing(format!("failed to serialize JSON: {}", e)))?;
     let enc_json = encrypt_lanis_data(json.as_bytes(), &key_pair.public_key_string).await;
-    
-    match client.post(URL::MESSAGES).form(&[("a", "newmessage"), ("c", enc_json.as_str())]).send().await {
+
+    match client
+        .post(URL::MESSAGES)
+        .form(&[("a", "newmessage"), ("c", enc_json.as_str())])
+        .send()
+        .await
+    {
         Ok(response) => {
             #[derive(Serialize, Deserialize)]
             struct ResponseJson {
@@ -697,13 +943,20 @@ pub async fn create_conversation(receiver: &Vec<Receiver>, subject: &str, text: 
                 id: String,
             }
 
-            let text = response.text().await.map_err(|e| Error::Parsing(format!("failed to parse response as text: {}", e)))?;
-            let json: ResponseJson = serde_json::from_str(&text).map_err(|e| Error::Parsing(format!("failed to deserialize JSON: {}", e)))?;
+            let text = response
+                .text()
+                .await
+                .map_err(|e| Error::Parsing(format!("failed to parse response as text: {}", e)))?;
+            let json: ResponseJson = serde_json::from_str(&text)
+                .map_err(|e| Error::Parsing(format!("failed to deserialize JSON: {}", e)))?;
 
-            if !json.back { return Ok(None) }
+            if !json.back {
+                return Ok(None);
+            }
             Ok(Some(json.id))
         }
-        Err(e) => Err(Error::Network(format!("failed to create conversation '{e}'"))),
+        Err(e) => Err(Error::Network(format!(
+            "failed to create conversation '{e}'"
+        ))),
     }
 }
-
