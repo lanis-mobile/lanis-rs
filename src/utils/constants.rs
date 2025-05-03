@@ -21,5 +21,5 @@ impl URL {
     pub const TIMETABLE: &'static str = "https://start.schulportal.hessen.de/stundenplan.php";
     pub const DATA_STORAGE: &'static str = "https://start.schulportal.hessen.de/dateispeicher.php";
     pub const MESSAGES: &'static str = "https://start.schulportal.hessen.de/nachrichten.php";
-    pub const CALENDAR: &'static str = "https://start.schulportal.hessen.de/kalendar.php";
+    pub const CALENDAR: &'static str = "https://start.schulportal.hessen.de/kalender.php";
 }

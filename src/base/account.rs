@@ -270,6 +270,7 @@ impl Account {
                         "stundenplan.php" => features.push(Feature::LanisTimetable),
                         "dateispeicher.php" => features.push(Feature::FileStorage),
                         "nachrichten.php" => features.push(Feature::MessagesBeta),
+                        "kalender.php" => features.push(Feature::Calendar),
                         _ => continue,
                     }
                 }

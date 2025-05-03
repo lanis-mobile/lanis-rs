@@ -1,7 +1,8 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use reqwest::Client;
-use serde::{ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
+use crate::utils::datetime::datetime_string_stupid_to_datetime;
 use crate::{
     utils::{constants::URL, datetime::datetime_string_to_datetime},
     Error,
@@ -9,7 +10,7 @@ use crate::{
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct CalendarEntry {
-    pub id: i32,
+    pub id: String,
     pub school_id: Option<i32>,
     pub external_uid: Option<String>,
     pub responsible_id: Option<i32>,
@@ -36,7 +37,7 @@ pub struct CalendarEntry {
 
 impl CalendarEntry {
     pub fn new(
-        id: i32,
+        id: String,
         school_id: Option<i32>,
         external_uid: Option<String>,
         responsible_id: Option<i32>,
@@ -82,6 +83,12 @@ pub struct StudyGroup {
     pub name: String,
 }
 
+impl StudyGroup {
+    pub fn new(id: i32, name: String) -> Self {
+        Self { id, name }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub struct CalendarEntryCategory {
     pub id: i32,
@@ -94,7 +101,7 @@ pub async fn get_entries(
     from: NaiveDate,
     to: NaiveDate,
     search_query: Option<String>,
-    client: Client,
+    client: &Client,
 ) -> Result<Vec<CalendarEntry>, Error> {
     let categories = match client.get(URL::CALENDAR).send().await {
         Ok(response) => {
@@ -115,12 +122,18 @@ pub async fn get_entries(
                         let content = part
                             .trim()
                             .replace("categories.push(", "")
-                            .replace(");", ",");
+                            .replace(");", ",")
+                            .replace("id", "\"id\"")
+                            .replace("name", "\"name\"")
+                            .replace("color", "\"color\"")
+                            .replace("logo", "\"logo\"")
+                            .replace("\'", "\"");
                         let final_content = match content.rsplit_once(",") {
                             Some(split) => split.0.trim().to_string(),
                             None => content, // Happens if no categories exist at all
                         };
-                        format!("{{{}}}", final_content.trim())
+
+                        format!("[{}]", final_content.trim())
                     }
                     None => return Err(Error::Parsing(String::from(
                         "failed to parse json categories (missing first part of 'var groups...')",
@@ -207,14 +220,14 @@ pub async fn get_entries(
         #[serde(rename = "Ort")]
         place: Option<String>,
         #[serde(rename = "Lerngruppe")]
-        study_group: Option<String>,
+        study_group: Option<serde_json::Value>,
         category: Option<String>,
         #[serde(rename = "Neu")]
         new: String,
         #[serde(rename = "Oeffentlich")]
         public: String,
         #[serde(rename = "Privat")]
-        private: bool,
+        private: String,
         #[serde(rename = "Geheim")]
         secret: String,
         #[serde(rename = "allDay")]
@@ -231,13 +244,9 @@ pub async fn get_entries(
         }
     };
 
+    let mut entries = Vec::new();
     for json_event in json_events {
-        let id: i32 = json_event
-            .id
-            .parse()
-            .map_err(|e| Error::Parsing(format!("failed to parse id as i32 with error '{}'", e)))?;
-
-        let schoold_id: Option<i32> = match json_event.school_id {
+        let school_id: Option<i32> = match json_event.school_id {
             Some(id_string) => match id_string.parse() {
                 Ok(school_id) => Some(school_id),
                 Err(e) => {
@@ -250,9 +259,9 @@ pub async fn get_entries(
             None => None,
         };
 
-        let resposible_id: Option<i32> = match json_event.responsible_id {
+        let responsible_id: Option<i32> = match json_event.responsible_id {
             Some(id_string) => match id_string.parse() {
-                Ok(responisble_id) => Some(responisble_id),
+                Ok(responsible_id) => Some(responsible_id),
                 Err(e) => {
                     return Err(Error::Parsing(format!(
                         "failed to parse resposible_id as i32 with error '{}'",
@@ -263,7 +272,7 @@ pub async fn get_entries(
             None => None,
         };
 
-        let start = datetime_string_to_datetime(&json_event.start.replace("-", "."))
+        let start = datetime_string_stupid_to_datetime(&json_event.start)
             .map_err(|e| {
                 Error::DateTime(format!(
                     "failed to parse start datetime of entry with error '{}'",
@@ -272,7 +281,7 @@ pub async fn get_entries(
             })?
             .to_utc();
 
-        let end = datetime_string_to_datetime(&json_event.end.replace("-", "."))
+        let end = datetime_string_stupid_to_datetime(&json_event.end)
             .map_err(|e| {
                 Error::DateTime(format!(
                     "failed to parse end datetime of entry with error '{}'",
@@ -283,7 +292,7 @@ pub async fn get_entries(
 
         let last_modified = match json_event.last_modified {
             Some(datetime_string) => Some(
-                datetime_string_to_datetime(&datetime_string.replace("-", "."))
+                datetime_string_stupid_to_datetime(&datetime_string)
                     .map_err(|e| {
                         Error::DateTime(format!(
                             "failed to parse end datetime of entry with error '{}'",
@@ -294,7 +303,75 @@ pub async fn get_entries(
             ),
             None => None,
         };
+
+        let study_group = match json_event.study_group {
+            Some(study_group) => match study_group.as_str() {
+                Some(json_object) => {
+                    #[derive(Deserialize)]
+                    struct JsonStudyGroup {
+                        #[serde(rename = "Name")]
+                        name: String,
+                        #[serde(rename = "Id")]
+                        id: String,
+                    }
+
+                    let json_study_group: JsonStudyGroup = serde_json::from_str(&json_object)
+                        .map_err(|e| {
+                            Error::Parsing(format!(
+                                "failed to parse json of study group with error '{}'",
+                                e
+                            ))
+                        })?;
+
+                    let id: i32 = json_study_group.id.parse().map_err(|e| {
+                        Error::Parsing(format!(
+                            "failed to parse study group id ({}) as i32 with error '{}'",
+                            json_study_group.id, e
+                        ))
+                    })?;
+
+                    Some(StudyGroup::new(id, json_study_group.name))
+                }
+                None => None,
+            },
+            None => None,
+        };
+
+        let category = match json_event.category {
+            Some(json_object) => {
+                let id: i32 = json_object.parse().map_err(|e| {
+                    Error::Parsing(format!("failed to parse category id with error '{}'", e))
+                })?;
+                categories.iter().find(|&c| c.id == id).cloned()
+            }
+            None => None,
+        };
+
+        let new = json_event.new != "nein";
+        let public = json_event.public != "nein";
+        let private = json_event.private != "nein";
+        let secret = json_event.secret != "nein";
+
+        entries.push(CalendarEntry::new(
+            json_event.id,
+            school_id,
+            json_event.external_uid,
+            responsible_id,
+            json_event.title,
+            json_event.description,
+            start,
+            end,
+            last_modified,
+            json_event.place,
+            study_group,
+            category,
+            new,
+            public,
+            private,
+            secret,
+            json_event.all_day,
+        ));
     }
 
-    Err(Error::KeyPair)
+    Ok(entries)
 }

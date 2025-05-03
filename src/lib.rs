@@ -10,6 +10,7 @@ pub enum Feature {
     MeinUnttericht,
     FileStorage,
     MessagesBeta,
+    Calendar,
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
@@ -112,6 +113,7 @@ mod tests {
         can_choose_type, create_conversation, search_receiver, ConversationOverview,
     };
     use crate::utils::crypt::{decrypt_any, encrypt_any};
+    use modules::calendar;
     use std::path::Path;
     use std::{env, fs};
     use stopwatch_rs::StopWatch;
@@ -610,5 +612,30 @@ mod tests {
         }
 
         println!()
+    }
+
+    #[tokio::test]
+    async fn test_calendar() {
+        let account = create_account().await;
+        match account.is_supported(Feature::Calendar) {
+            true => {
+                println!("Fetching calendar entries...");
+                let mut stopwatch = StopWatch::start();
+                let entries = calendar::get_entries(
+                    chrono::Local::now().date_naive(),
+                    chrono::Local::now().date_naive() + chrono::Duration::days(365),
+                    None,
+                    &account.client,
+                )
+                .await
+                .unwrap();
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
+                println!("First entry: {:?}", entries.get(0).unwrap());
+            }
+            false => {
+                println!("Calendar is not support. Skipping...")
+            }
+        }
     }
 }
