@@ -2,7 +2,10 @@ use chrono::{DateTime, NaiveDate, Utc};
 use reqwest::Client;
 use serde::{ser, Deserialize, Serialize};
 
-use crate::{utils::constants::URL, Error};
+use crate::{
+    utils::{constants::URL, datetime::datetime_string_to_datetime},
+    Error,
+};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct CalendarEntry {
@@ -29,6 +32,48 @@ pub struct CalendarEntry {
     /// Indicates if an entry is secret (probably)
     pub secret: bool,
     pub all_day: bool,
+}
+
+impl CalendarEntry {
+    pub fn new(
+        id: i32,
+        school_id: Option<i32>,
+        external_uid: Option<String>,
+        responsible_id: Option<i32>,
+        title: String,
+        description: String,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        last_modified: Option<DateTime<Utc>>,
+        place: Option<String>,
+        study_group: Option<StudyGroup>,
+        category: Option<CalendarEntryCategory>,
+        new: bool,
+        public: bool,
+        private: bool,
+        secret: bool,
+        all_day: bool,
+    ) -> Self {
+        Self {
+            id,
+            school_id,
+            external_uid,
+            responsible_id,
+            title,
+            description,
+            start,
+            end,
+            last_modified,
+            place,
+            study_group,
+            category,
+            new,
+            public,
+            private,
+            secret,
+            all_day,
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
@@ -185,6 +230,71 @@ pub async fn get_entries(
             )));
         }
     };
+
+    for json_event in json_events {
+        let id: i32 = json_event
+            .id
+            .parse()
+            .map_err(|e| Error::Parsing(format!("failed to parse id as i32 with error '{}'", e)))?;
+
+        let schoold_id: Option<i32> = match json_event.school_id {
+            Some(id_string) => match id_string.parse() {
+                Ok(school_id) => Some(school_id),
+                Err(e) => {
+                    return Err(Error::Parsing(format!(
+                        "failed to parse school_id as i32 with error '{}'",
+                        e
+                    )));
+                }
+            },
+            None => None,
+        };
+
+        let resposible_id: Option<i32> = match json_event.responsible_id {
+            Some(id_string) => match id_string.parse() {
+                Ok(responisble_id) => Some(responisble_id),
+                Err(e) => {
+                    return Err(Error::Parsing(format!(
+                        "failed to parse resposible_id as i32 with error '{}'",
+                        e
+                    )));
+                }
+            },
+            None => None,
+        };
+
+        let start = datetime_string_to_datetime(&json_event.start.replace("-", "."))
+            .map_err(|e| {
+                Error::DateTime(format!(
+                    "failed to parse start datetime of entry with error '{}'",
+                    e
+                ))
+            })?
+            .to_utc();
+
+        let end = datetime_string_to_datetime(&json_event.end.replace("-", "."))
+            .map_err(|e| {
+                Error::DateTime(format!(
+                    "failed to parse end datetime of entry with error '{}'",
+                    e
+                ))
+            })?
+            .to_utc();
+
+        let last_modified = match json_event.last_modified {
+            Some(datetime_string) => Some(
+                datetime_string_to_datetime(&datetime_string.replace("-", "."))
+                    .map_err(|e| {
+                        Error::DateTime(format!(
+                            "failed to parse end datetime of entry with error '{}'",
+                            e
+                        ))
+                    })?
+                    .to_utc(),
+            ),
+            None => None,
+        };
+    }
 
     Err(Error::KeyPair)
 }
