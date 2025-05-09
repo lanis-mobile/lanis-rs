@@ -3,17 +3,16 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::utils::datetime::datetime_string_stupid_to_datetime;
-use crate::{
-    utils::{constants::URL, datetime::datetime_string_to_datetime},
-    Error,
-};
+use crate::{utils::constants::URL, Error};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct CalendarEntry {
     pub id: String,
     pub school_id: Option<i32>,
     pub external_uid: Option<String>,
-    pub responsible_id: Option<i32>,
+    /// The person / group who is responsible for the entry / event
+    pub responsible: Option<CalendarEntryPerson>,
+    pub target_audience: Vec<CalendarEntryPerson>,
     pub title: String,
     /// May be empty
     pub description: String,
@@ -35,12 +34,20 @@ pub struct CalendarEntry {
     pub all_day: bool,
 }
 
+/// May also be a group and not a single person
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct CalendarEntryPerson {
+    pub id: String,
+    pub name: String,
+}
+
 impl CalendarEntry {
     pub fn new(
         id: String,
         school_id: Option<i32>,
         external_uid: Option<String>,
-        responsible_id: Option<i32>,
+        responsible: Option<CalendarEntryPerson>,
+        target_audience: Vec<CalendarEntryPerson>,
         title: String,
         description: String,
         start: DateTime<Utc>,
@@ -59,7 +66,8 @@ impl CalendarEntry {
             id,
             school_id,
             external_uid,
-            responsible_id,
+            responsible,
+            target_audience,
             title,
             description,
             start,
@@ -97,6 +105,8 @@ pub struct CalendarEntryCategory {
     pub color: String,
 }
 
+/// Get all calendar entries in an specific time frame <br>
+/// You can also use a optional search query to filter for events (this is server side)
 pub async fn get_entries(
     from: NaiveDate,
     to: NaiveDate,
@@ -259,19 +269,6 @@ pub async fn get_entries(
             None => None,
         };
 
-        let responsible_id: Option<i32> = match json_event.responsible_id {
-            Some(id_string) => match id_string.parse() {
-                Ok(responsible_id) => Some(responsible_id),
-                Err(e) => {
-                    return Err(Error::Parsing(format!(
-                        "failed to parse resposible_id as i32 with error '{}'",
-                        e
-                    )));
-                }
-            },
-            None => None,
-        };
-
         let start = datetime_string_stupid_to_datetime(&json_event.start)
             .map_err(|e| {
                 Error::DateTime(format!(
@@ -352,11 +349,102 @@ pub async fn get_entries(
         let private = json_event.private != "nein";
         let secret = json_event.secret != "nein";
 
+        let (responsible_name, target_audience) = {
+            #[derive(Deserialize)]
+            struct JsonDetails {
+                properties: JsonDetailsProperties,
+            }
+
+            #[derive(Deserialize)]
+            struct JsonDetailsProperties {
+                #[serde(rename = "zielgruppen")]
+                target_audience: Option<serde_json::Value>,
+                #[serde(rename = "verantwortlich")]
+                responsible_name: Option<String>,
+            }
+
+            let json_details = match client
+                .post(URL::CALENDAR)
+                .form(&[("f", "getEvent"), ("id", json_event.id.as_str())])
+                .send()
+                .await
+            {
+                Ok(response) => response.text().await.map_err(|e| {
+                    Error::Html(format!(
+                        "failed to parse html / json of entry details as text with error '{}'",
+                        e
+                    ))
+                })?,
+                Err(e) => {
+                    return Err(Error::Network(format!(
+                        "failed to post '{}' with error '{}'",
+                        URL::CALENDAR,
+                        e
+                    )))
+                }
+            };
+
+            let details: JsonDetails = serde_json::from_str(&json_details).map_err(|e| {
+                Error::Parsing(format!(
+                    "failed to parse json of entry details ({}) with error '{}'",
+                    json_event.id, e
+                ))
+            })?;
+
+            let raw_target_audience = details.properties.target_audience.unwrap_or_default();
+            let json_target_audience = raw_target_audience.to_string();
+            let target_audience_split = json_target_audience.split(",");
+
+            let mut targets = Vec::new();
+            for target in target_audience_split {
+                let (broken_id, name) = target.split_once(":").unwrap_or_default();
+
+                let id = broken_id
+                    .replace("\"", "")
+                    .replacen("-", "", 1)
+                    .replacen("{", "", 1)
+                    .trim()
+                    .to_string();
+                let name = name.replace("\"", "").replace("}", "").trim().to_string();
+
+                if broken_id.is_empty() || name.is_empty() {
+                    continue;
+                }
+
+                targets.push(CalendarEntryPerson { id, name });
+            }
+
+            (
+                details
+                    .properties
+                    .responsible_name
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
+                targets,
+            )
+        };
+
+        let responsible = match json_event.responsible_id {
+            Some(id) => {
+                if id.is_empty() || responsible_name.is_empty() {
+                    None
+                } else {
+                    Some(CalendarEntryPerson {
+                        id,
+                        name: responsible_name,
+                    })
+                }
+            }
+            None => None,
+        };
+
         entries.push(CalendarEntry::new(
             json_event.id,
             school_id,
             json_event.external_uid,
-            responsible_id,
+            responsible,
+            target_audience,
             json_event.title,
             json_event.description,
             start,

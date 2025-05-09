@@ -631,7 +631,9 @@ mod tests {
                 .unwrap();
                 let ms = stopwatch.split().split.as_millis();
                 println!("Took {}ms", ms);
-                println!("First entry: {:?}", entries.get(0).unwrap());
+                for entry in entries {
+                    println!("Entry: {:?}", entry);
+                }
             }
             false => {
                 println!("Calendar is not support. Skipping...")
