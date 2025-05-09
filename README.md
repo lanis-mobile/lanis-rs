@@ -9,6 +9,6 @@ Expect bugs! If you encounter a bug please submit an issue with preferably the H
 
 ## Usage
 
-For examples how to use this API please take a look in [examples](./examples).
+For example on how to use this API please take a look in [examples](./examples).
 Please note that the examples are not complete and some are missing.
 
