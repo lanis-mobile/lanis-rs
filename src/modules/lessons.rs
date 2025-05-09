@@ -181,7 +181,7 @@ impl Lesson {
                 let history_table_rows = history_doc.select(&history_table_rows_selector);
 
                 // Selectors for loop
-                let title_selector = Selector::parse("big>b").unwrap();
+                let title_selector = Selector::parse("td>b").unwrap();
 
                 let details_selector = Selector::parse("span.markup i.fa-comment-alt").unwrap();
 
