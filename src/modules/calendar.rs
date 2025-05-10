@@ -1,4 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
+use markup5ever::tendril::fmt::Slice;
+use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -462,4 +464,194 @@ pub async fn get_entries(
     }
 
     Ok(entries)
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct CalendarExports {
+    /// All available years (PDF and CSV) <br>
+    /// These years refer to School years so 2024 is 2024/2025
+    pub available_years: Vec<i32>,
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub enum CalendarExportFileType {
+    PDF(CalendarExportFileTypePDF),
+    /// The i32 represents the year <br>
+    /// NOTE: Make sure the year is available
+    CSV(i32),
+    /// The i32 represents the year <br>
+    /// NOTE: Make sure the year is available
+    ICS(i32),
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub enum CalendarExportFileTypePDF {
+    CurrentDay,
+    NextDay,
+    CurrentWeek,
+    NextWeek,
+    /// The i32 represents the year <br>
+    /// NOTE: Make sure the year is available
+    YearSimple(i32),
+    /// The i32 represents the year <br>
+    /// NOTE: Make sure the year is available
+    YearDetailed(i32),
+    /// The i32 represents the year <br>
+    /// NOTE: Make sure the year is available
+    YearMonthView(i32),
+}
+
+impl CalendarExports {
+    pub fn new(available_years: Vec<i32>) -> Self {
+        Self { available_years }
+    }
+
+    pub async fn get(client: &Client) -> Result<Self, Error> {
+        let response = client.get(URL::CALENDAR).send().await.map_err(|e| {
+            Error::Network(format!("failed to get {} with error {}", URL::CALENDAR, e))
+        })?;
+
+        let html = response.text().await.map_err(|e| {
+            Error::Html(format!(
+                "failed to parse HTML of response from '{}' with error '{}'",
+                URL::CALENDAR,
+                e
+            ))
+        })?;
+
+        let regex = Regex::new(r"year=(\d\d\d\d)")
+            .map_err(|e| Error::Parsing(format!("failed to create regex with error '{}'", e)))?;
+        let captures: Vec<_> = regex.captures_iter(&html).collect();
+
+        let mut years: Vec<i32> = Vec::new();
+        for capture_group in captures {
+            if let Some(year) = capture_group.get(1) {
+                if let Ok(year) = year.as_str().parse() {
+                    years.push(year);
+                }
+            }
+        }
+
+        Ok(Self::new(years))
+    }
+
+    /// Get the iCal url (automatic updates)
+    pub async fn get_ical(client: &Client) -> Result<String, Error> {
+        client
+            .post(URL::CALENDAR)
+            .form(&[("f", "iCalAbo")])
+            .send()
+            .await
+            .map_err(|e| {
+                Error::Network(format!(
+                    "failed to post '{}' with error '{}'",
+                    URL::CALENDAR,
+                    e
+                ))
+            })?
+            .text()
+            .await
+            .map_err(|e| {
+                Error::Parsing(format!(
+                    "failed to parse text of response with error '{}'",
+                    e
+                ))
+            })
+    }
+
+    /// Export a file with the specific type
+    pub async fn get_export(
+        &self,
+        client: &Client,
+        export_type: CalendarExportFileType,
+        path: &str,
+    ) -> Result<(), Error> {
+        let url = match export_type {
+            CalendarExportFileType::PDF(pdf_type) => match pdf_type {
+                CalendarExportFileTypePDF::CurrentDay => {
+                    "https://start.schulportal.hessen.de/kalender.php?a=export&export=pdf&day=1"
+                        .to_string()
+                }
+                CalendarExportFileTypePDF::NextDay => {
+                    "https://start.schulportal.hessen.de/kalender.php?a=export&export=pdf&day=2"
+                        .to_string()
+                }
+                CalendarExportFileTypePDF::CurrentWeek => {
+                    "https://start.schulportal.hessen.de/kalender.php?a=export&export=pdf&week=1"
+                        .to_string()
+                }
+                CalendarExportFileTypePDF::NextWeek => {
+                    "https://start.schulportal.hessen.de/kalender.php?a=export&export=pdf&week=2"
+                        .to_string()
+                }
+                CalendarExportFileTypePDF::YearSimple(year) => {
+                    match self.available_years.contains(&year) {
+                        true => format!("https://start.schulportal.hessen.de/kalender.php?a=export&export=pdf&year={}", year),
+                        false => return Err(Error::InvalidInput(format!("year '{}' is not available!", year)))
+                    }
+                }
+                CalendarExportFileTypePDF::YearDetailed(year) => {
+                    match self.available_years.contains(&year) {
+                        true => format!("https://start.schulportal.hessen.de/kalender.php?a=export&export=pdf-extended&year={}", year),
+                        false => return Err(Error::InvalidInput(format!("year '{}' is not available!", year)))
+                    }
+                }
+                CalendarExportFileTypePDF::YearMonthView(year) => {
+                    match self.available_years.contains(&year) {
+                        true => format!("https://start.schulportal.hessen.de/kalender.php?a=export&export=wandkalender&year={}", year),
+                        false => return Err(Error::InvalidInput(format!("year '{}' is not available!", year)))
+                    }
+                }
+            },
+            CalendarExportFileType::CSV(year) => match self.available_years.contains(&year) {
+                true => format!(
+                    "https://start.schulportal.hessen.de/kalender.php?a=export&export=csv&year={}",
+                    year
+                ),
+                false => {
+                    return Err(Error::InvalidInput(format!(
+                        "year '{}' is not available!",
+                        year
+                    )))
+                }
+            },
+            CalendarExportFileType::ICS(year) => match self.available_years.contains(&year) {
+                true => format!(
+                    "https://start.schulportal.hessen.de/kalender.php?a=export&export=ical&year={}",
+                    year
+                ),
+                false => {
+                    return Err(Error::InvalidInput(format!(
+                        "year '{}' is not available!",
+                        year
+                    )))
+                }
+            },
+        };
+
+        let response =
+            client.get(&url).send().await.map_err(|e| {
+                Error::Network(format!("failed to get '{}' with error '{}'", url, e))
+            })?;
+
+        let bytes = response.bytes().await.map_err(|e| {
+            Error::Parsing(format!(
+                "failed to parse response as bytes with error '{}'",
+                e
+            ))
+        })?;
+
+        let mut file = tokio::fs::File::create(path).await.map_err(|e| {
+            Error::FileSystem(format!(
+                "failed to create file at '{}' with error '{}'",
+                path, e
+            ))
+        })?;
+
+        tokio::io::copy(&mut bytes.as_bytes(), &mut file)
+            .await
+            .map_err(|e| Error::FileSystem(format!("failed to save file with error '{}'", e)))?;
+
+        Ok(())
+    }
 }

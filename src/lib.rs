@@ -40,6 +40,8 @@ pub enum Error {
     ServerSide(String),
     /// Happens if anything goes wrong when interacting with the file system
     FileSystem(String),
+    /// Happens if any input is invalid
+    InvalidInput(String),
 }
 
 impl std::fmt::Display for Error {
@@ -59,6 +61,7 @@ impl std::fmt::Display for Error {
             Error::LessonUploadError(e) => write!(f, "Error::LessonUploadError({e})"),
             Error::ServerSide(e) => write!(f, "Error::ServerSide({e})"),
             Error::FileSystem(e) => write!(f, "Error::FileSystem({e})"),
+            Error::InvalidInput(e) => write!(f, "Error::InvalidInput({e})"),
         }
     }
 }
@@ -113,7 +116,10 @@ mod tests {
         can_choose_type, create_conversation, search_receiver, ConversationOverview,
     };
     use crate::utils::crypt::{decrypt_any, encrypt_any};
-    use modules::calendar;
+    use base::account;
+    use modules::calendar::{
+        self, CalendarExportFileType, CalendarExportFileTypePDF, CalendarExports,
+    };
     use std::path::Path;
     use std::{env, fs};
     use stopwatch_rs::StopWatch;
@@ -630,10 +636,30 @@ mod tests {
                 .await
                 .unwrap();
                 let ms = stopwatch.split().split.as_millis();
-                println!("Took {}ms", ms);
                 for entry in entries {
                     println!("Entry: {:?}", entry);
                 }
+                println!("Took {}ms", ms);
+
+                let mut stopwatch = StopWatch::start();
+                println!("Downloading exports...");
+                println!(
+                    "iCal link: {}",
+                    CalendarExports::get_ical(&account.client).await.unwrap()
+                );
+                let exports = CalendarExports::get(&account.client).await.unwrap();
+                exports
+                    .get_export(
+                        &account.client,
+                        CalendarExportFileType::PDF(CalendarExportFileTypePDF::YearDetailed(
+                            *exports.available_years.first().unwrap(),
+                        )),
+                        "./target/temp.pdf",
+                    )
+                    .await
+                    .unwrap();
+                let ms = stopwatch.split().split.as_millis();
+                println!("Took {}ms", ms);
             }
             false => {
                 println!("Calendar is not support. Skipping...")
