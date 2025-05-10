@@ -14,21 +14,21 @@ impl std::fmt::Display for DateTimeError {
     }
 }
 
-/// Converts +02:00 DateTime to DateTime<FixedOffset> (takes DateTime String in format: %d.%m.%Y %H:%M:%S)
-pub(crate) fn datetime_string_to_datetime(
-    datetime: &str,
-) -> Result<DateTime<FixedOffset>, DateTimeError> {
-    let date_time =
-        DateTime::parse_from_str(&format!("{} +02:00", datetime), "%d.%m.%Y %H:%M:%S %z").map_err(
-            |e| {
-                DateTimeError::DateTimeInvalid(format!(
-                    "converting '{} +02:00' failed with error '{}'",
-                    datetime, e
-                ))
-            },
-        )?;
-    Ok(date_time)
-}
+// /// Converts +02:00 DateTime to DateTime<FixedOffset> (takes DateTime String in format: %d.%m.%Y %H:%M:%S)
+//pub(crate) fn datetime_string_to_datetime(
+//    datetime: &str,
+//) -> Result<DateTime<FixedOffset>, DateTimeError> {
+//    let date_time =
+//        DateTime::parse_from_str(&format!("{} +02:00", datetime), "%d.%m.%Y %H:%M:%S %z").map_err(
+//            |e| {
+//                DateTimeError::DateTimeInvalid(format!(
+//                    "converting '{} +02:00' failed with error '{}'",
+//                    datetime, e
+//                ))
+//            },
+//        )?;
+//    Ok(date_time)
+//}
 
 /// Converts +02:00 DateTime to DateTime<FixedOffset> (takes DateTime String in format: %Y-%m-%d %H:%M:%S)
 pub(crate) fn datetime_string_stupid_to_datetime(
