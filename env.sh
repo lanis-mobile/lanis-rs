@@ -1,3 +1,0 @@
-export LANIS_SCHOOL_ID=0
-export LANIS_USERNAME=null
-export LANIS_PASSWORD=null
