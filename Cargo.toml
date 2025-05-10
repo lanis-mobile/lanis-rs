@@ -4,7 +4,7 @@ version = "0.0.1-ALPHA"
 authors = ["Rajala1404"]
 edition = "2021"
 description = "A API for Lanis (Schulportal Hessen)"
-keywords = ["lanis", "schulportal", "scraping", "sph"]
+keywords = ["lanis", "schulportal", "scraping", "sph", "api"]
 
 license-file = "LICENSE"
 readme = "README.md"
