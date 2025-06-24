@@ -4,8 +4,10 @@ use crate::utils::constants::URL;
 use crate::utils::crypt::{
     decrypt_any, encrypt_any, generate_lanis_key_pair, CryptorError, LanisKeyPair,
 };
+use crate::utils::datetime::date_string_to_naivedate;
 use crate::Error;
 use crate::Feature;
+use chrono::NaiveDate;
 use reqwest::header::LOCATION;
 use reqwest::redirect::Policy;
 use reqwest::{Client, StatusCode};
@@ -43,11 +45,33 @@ pub struct Account {
     pub secrets: AccountSecrets,
     pub account_type: AccountType,
     pub features: Vec<Feature>,
-    pub data: BTreeMap<String, String>,
+    // If you used `Account::new` this is guranteed to be `Some`
+    pub info: Option<AccountInfo>,
     /// You can generate a new KeyPair by using the Ok result of [generate_lanis_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
     pub key_pair: LanisKeyPair,
     pub client: Client,
     pub cookie_store: Arc<CookieStoreMutex>,
+}
+
+/// The account info
+/// Some fields may be empty if the value doesn't exist in the SPH
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct AccountInfo {
+    pub firstname: String,
+    pub lastname: String,
+    pub username: String,
+    pub birthdate: NaiveDate,
+    pub gender: Gender,
+    pub grade: String,
+    pub class: String,
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+pub enum Gender {
+    Male,
+    Female,
+    Diverse,
+    Unknown,
 }
 
 impl Account {
@@ -74,7 +98,7 @@ impl Account {
             school,
             secrets,
             account_type: AccountType::Unknown,
-            data: BTreeMap::new(),
+            info: None,
             features: Vec::new(),
             key_pair,
             client,
@@ -82,7 +106,7 @@ impl Account {
         };
 
         account.create_session().await?;
-        account.data = account.fetch_account_data().await?;
+        account.info = Some(account.fetch_account_info().await?);
         account.account_type = account.get_type().await;
         account.features = account.get_features().await?;
 
@@ -190,7 +214,7 @@ impl Account {
         }
     }
 
-    pub async fn fetch_account_data(&self) -> Result<BTreeMap<String, String>, Error> {
+    pub async fn fetch_account_info(&self) -> Result<AccountInfo, Error> {
         match self
             .client
             .get(URL::USER_DATA)
@@ -199,7 +223,7 @@ impl Account {
             .await
         {
             Ok(response) => {
-                let document = Html::parse_document(&*response.text().await.unwrap());
+                let document = Html::parse_document(&response.text().await.unwrap());
                 let user_data_table_body_selector =
                     Selector::parse("div.col-md-12 table.table.table-striped tbody").unwrap();
 
@@ -221,7 +245,45 @@ impl Account {
                         }
                     }
                 }
-                Ok(result)
+
+                let firstname = result.get("vorname").unwrap_or(&String::new()).to_owned();
+                let lastname = result.get("nachname").unwrap_or(&String::new()).to_owned();
+                let username = result.get("login").unwrap_or(&String::new()).to_owned();
+                let birthdate = {
+                    let s = result
+                        .get("geburtsdatum")
+                        .unwrap_or(&String::from("01.01.1970"))
+                        .to_owned();
+                    date_string_to_naivedate(&s).map_err(|e| {
+                        Error::DateTime(format!("failed to convert date to DateTime '{:?}'", e))
+                    })?
+                };
+                let gender = {
+                    let s = result
+                        .get("geschlecht")
+                        .unwrap_or(&String::new())
+                        .to_owned();
+                    match s.as_str() {
+                        "männlich" => Gender::Male,
+                        "weiblich" => Gender::Female,
+                        "divers" => Gender::Diverse,
+                        _ => Gender::Unknown,
+                    }
+                };
+                let grade = result.get("stufe").unwrap_or(&String::new()).to_owned();
+                let class = result.get("klasse").unwrap_or(&String::new()).to_owned();
+
+                let info = AccountInfo {
+                    firstname,
+                    lastname,
+                    username,
+                    birthdate,
+                    gender,
+                    grade,
+                    class,
+                };
+
+                Ok(info)
             }
             Err(e) => Err(Error::Network(
                 format!("failed to fetch account data: {}", e).to_string(),
@@ -230,7 +292,7 @@ impl Account {
     }
 
     pub async fn get_type(&self) -> AccountType {
-        if self.data.contains_key("klasse") {
+        if !self.info.clone().unwrap().class.is_empty() {
             Student
         } else {
             Teacher
@@ -341,4 +403,3 @@ impl UntisSecrets {
         }
     }
 }
-

@@ -224,7 +224,7 @@ mod tests {
         println!("Private Key:\n{}", account.key_pair.private_key_string);
         println!("Public Key:\n{}", account.key_pair.public_key_string);
 
-        assert_eq!(account.data.is_empty(), false);
+        assert!(!account.info.unwrap().firstname.is_empty());
 
         println!()
     }

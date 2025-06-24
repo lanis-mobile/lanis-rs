@@ -62,6 +62,15 @@ pub(crate) fn date_time_string_to_datetime(
     Ok(date_time)
 }
 
+/// Converts Date to NaiveDate (%d.%m.%Y)
+pub(crate) fn date_string_to_naivedate(date: &str) -> Result<NaiveDate, DateTimeError> {
+    let date = NaiveDate::parse_from_str(date, "%d.%m.%Y").map_err(|e| {
+        DateTimeError::DateTimeInvalid(format!("converting '{}' failed with error '{}'", date, e))
+    })?;
+
+    Ok(date)
+}
+
 /// Merges a [NaiveDate] with a [NaiveTime] to a [DateTime] (CEST)
 pub(crate) fn merge_naive_date_time_to_datetime(
     date: &NaiveDate,
