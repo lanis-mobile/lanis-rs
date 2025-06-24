@@ -376,8 +376,19 @@ impl Lesson {
                                     let text = text.replace("                                                                ", "").trim().to_string();
                                     let text = text.replace("bis ", "").trim().to_string();
                                     let text = text.replace("um", "").trim().to_string();
+                                    let text = text.replace(",", "").trim().to_string();
+                                    let text = text.replace(" den", "").trim().to_string();
+                                    let text = text.replace(" Uhr", "").trim().to_string();
+                                    let split = text.split(" ");
+                                    let date = format!(
+                                        "{}{}",
+                                        split.clone().nth(1).unwrap_or_default(),
+                                        chrono::Local::now().year(),
+                                    );
+                                    let time = format!("{}:00", split.last().unwrap_or_default());
+                                    println!("text is: {}", text);
 
-                                    date_time_string_to_datetime(text.as_str(), "02:00:00")
+                                    date_time_string_to_datetime(date.as_str(), time.as_str())
                                         .map_err(|e| {
                                             Error::DateTime(format!(
                                                 "failed to convert date to DateTime '{:?}'",
@@ -1383,6 +1394,9 @@ pub async fn get_lessons(account: &Account) -> Result<Vec<Lesson>, Error> {
                                 let topic_title =
                                     collect_text(school_class.select(&topic_title_selector).next())
                                         .unwrap_or("".to_string());
+                                if topic_title.is_empty() {
+                                    continue;
+                                }
 
                                 let teacher_short_selector = Selector::parse(
                                     ".teacher .btn.btn-primary.dropdown-toggle.btn-xs",

@@ -55,10 +55,11 @@ pub(crate) fn date_time_string_to_datetime(
         DateTime::parse_from_str(&format!("{} {} +02:00", date, time), "%d.%m.%Y %H:%M:%S %z")
             .map_err(|e| {
                 DateTimeError::DateTimeInvalid(format!(
-                    "converting '{} {}') +02:00 failed with error '{}'",
+                    "converting '{} {}' +02:00 failed with error '{}'",
                     date, time, e
                 ))
-            })?;
+            })
+            .unwrap();
     Ok(date_time)
 }
 
