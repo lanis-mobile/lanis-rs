@@ -7,7 +7,6 @@ description = "A API for Lanis (Schulportal Hessen)"
 keywords = ["lanis", "schulportal", "scraping", "sph", "api"]
 
 license = "GPL-3.0"
-license-file = "LICENSE"
 readme = "README.md"
 repository = "https://github.com/lanis-mobile/lanis-rs"
 
