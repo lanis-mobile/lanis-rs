@@ -105,7 +105,7 @@ impl std::fmt::Display for LessonUploadError {
 mod tests {
     use super::*;
 
-    use crate::base::account::{Account, AccountSecrets, UntisSecrets};
+    use crate::base::account::{Account, AccountSecrets, AccountType, UntisSecrets};
     use crate::base::schools::{get_school_id, get_schools, School};
     use crate::modules::lessons::get_lessons;
     use crate::modules::timetable;
@@ -210,7 +210,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_student_account() {
+    async fn test_account() {
         let account = create_account().await;
 
         let mut stopwatch = StopWatch::start();
@@ -299,6 +299,10 @@ mod tests {
     #[tokio::test]
     async fn test_lessons() {
         let account = create_account().await;
+        if account.account_type != AccountType::Student {
+            println!("Not a student account! Skipping!");
+            return;
+        }
 
         if account.is_supported(Feature::MeinUnttericht) {
             let mut stopwatch = StopWatch::start();

@@ -54,7 +54,6 @@ pub struct Account {
 }
 
 /// The account info
-/// Some fields may be empty if the value doesn't exist in the SPH
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct AccountInfo {
     pub firstname: String,
@@ -62,8 +61,27 @@ pub struct AccountInfo {
     pub username: String,
     pub birthdate: NaiveDate,
     pub gender: Gender,
+    /// Should be Some if the Account is of type Student so safe to call unwrap on
+    pub student: Option<AccountInfoStudent>,
+    /// Should be Some if the Account is of type Teacher so safe to call unwrap on
+    pub teacher: Option<AccountInfoTeacher>,
+}
+
+/// Student specifc infos. There is no gurantee for all fields to be filled (they may be empty)
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct AccountInfoStudent {
     pub grade: String,
     pub class: String,
+}
+
+/// Teacher specifc infos. There is no gurantee for all fields to be filled (they may be empty)
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct AccountInfoTeacher {
+    pub personal_number: String,
+    /// The "Klassenleitungen" list
+    pub classes: Vec<String>,
+    /// The "Stellvertretende Klassenleitungen" list
+    pub classes_sub: Vec<String>,
 }
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
@@ -270,17 +288,68 @@ impl Account {
                         _ => Gender::Unknown,
                     }
                 };
-                let grade = result.get("stufe").unwrap_or(&String::new()).to_owned();
-                let class = result.get("klasse").unwrap_or(&String::new()).to_owned();
 
-                let info = AccountInfo {
-                    firstname,
-                    lastname,
-                    username,
-                    birthdate,
-                    gender,
-                    grade,
-                    class,
+                let info = match self.account_type {
+                    AccountType::Student => {
+                        let grade = result.get("stufe").unwrap_or(&String::new()).to_owned();
+                        let class = result.get("klasse").unwrap_or(&String::new()).to_owned();
+
+                        let student = Some(AccountInfoStudent { grade, class });
+
+                        AccountInfo {
+                            firstname,
+                            lastname,
+                            username,
+                            birthdate,
+                            gender,
+                            student,
+                            teacher: None,
+                        }
+                    }
+                    AccountType::Teacher => {
+                        let personal_number = result
+                            .get("personalnummer")
+                            .unwrap_or(&String::new())
+                            .to_owned();
+                        let classes = Vec::new(); // TODO: Parse bullet point list
+                        let classes_sub = Vec::new(); // TODO: Parse bullet point list
+                        let teacher = Some(AccountInfoTeacher {
+                            personal_number,
+                            classes,
+                            classes_sub,
+                        });
+
+                        AccountInfo {
+                            firstname,
+                            lastname,
+                            username,
+                            birthdate,
+                            gender,
+                            student: None,
+                            teacher,
+                        }
+                    }
+                    AccountType::Parent => {
+                        // TODO: Fetch Parent specifc info
+                        AccountInfo {
+                            firstname,
+                            lastname,
+                            username,
+                            birthdate,
+                            gender,
+                            student: None,
+                            teacher: None,
+                        }
+                    }
+                    AccountType::Unknown => AccountInfo {
+                        firstname,
+                        lastname,
+                        username,
+                        birthdate,
+                        gender,
+                        student: None,
+                        teacher: None,
+                    },
                 };
 
                 Ok(info)
@@ -292,7 +361,7 @@ impl Account {
     }
 
     pub async fn get_type(&self) -> AccountType {
-        if !self.info.clone().unwrap().class.is_empty() {
+        if !self.info.clone().unwrap().student.is_some() {
             Student
         } else {
             Teacher
