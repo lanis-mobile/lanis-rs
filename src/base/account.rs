@@ -45,8 +45,7 @@ pub struct Account {
     pub secrets: AccountSecrets,
     pub account_type: AccountType,
     pub features: Vec<Feature>,
-    // If you used `Account::new` this is guranteed to be `Some`
-    pub info: Option<AccountInfo>,
+    pub info: AccountInfo,
     /// You can generate a new KeyPair by using the Ok result of [generate_lanis_key_pair()] <br> Make sure to not define anything larger than 151 (bits) as size
     pub key_pair: LanisKeyPair,
     pub client: Client,
@@ -65,6 +64,20 @@ pub struct AccountInfo {
     pub student: Option<AccountInfoStudent>,
     /// Should be Some if the Account is of type Teacher so safe to call unwrap on
     pub teacher: Option<AccountInfoTeacher>,
+}
+
+impl AccountInfo {
+    pub fn empty() -> Self {
+        Self {
+            firstname: String::new(),
+            lastname: String::new(),
+            username: String::new(),
+            birthdate: NaiveDate::MIN,
+            gender: Gender::Unknown,
+            student: None,
+            teacher: None,
+        }
+    }
 }
 
 /// Student specifc infos. There is no gurantee for all fields to be filled (they may be empty)
@@ -116,7 +129,7 @@ impl Account {
             school,
             secrets,
             account_type: AccountType::Unknown,
-            info: None,
+            info: AccountInfo::empty(),
             features: Vec::new(),
             key_pair,
             client,
@@ -124,8 +137,7 @@ impl Account {
         };
 
         account.create_session().await?;
-        account.info = Some(account.fetch_account_info().await?);
-        account.account_type = account.get_type().await;
+        (account.info, account.account_type) = account.fetch_account_info().await?;
         account.features = account.get_features().await?;
 
         Ok(account)
@@ -232,7 +244,7 @@ impl Account {
         }
     }
 
-    pub async fn fetch_account_info(&self) -> Result<AccountInfo, Error> {
+    pub async fn fetch_account_info(&self) -> Result<(AccountInfo, AccountType), Error> {
         match self
             .client
             .get(URL::USER_DATA)
@@ -288,8 +300,15 @@ impl Account {
                         _ => Gender::Unknown,
                     }
                 };
+                let account_type = if result.contains_key("stufe") {
+                    AccountType::Student
+                } else if result.contains_key("personalnummer") {
+                    AccountType::Teacher
+                } else {
+                    AccountType::Unknown
+                };
 
-                let info = match self.account_type {
+                let info = match account_type {
                     AccountType::Student => {
                         let grade = result.get("stufe").unwrap_or(&String::new()).to_owned();
                         let class = result.get("klasse").unwrap_or(&String::new()).to_owned();
@@ -352,7 +371,7 @@ impl Account {
                     },
                 };
 
-                Ok(info)
+                Ok((info, account_type))
             }
             Err(e) => Err(Error::Network(
                 format!("failed to fetch account data: {}", e).to_string(),
@@ -361,11 +380,7 @@ impl Account {
     }
 
     pub async fn get_type(&self) -> AccountType {
-        if !self.info.clone().unwrap().student.is_some() {
-            Student
-        } else {
-            Teacher
-        }
+        self.account_type.to_owned()
     }
 
     /// Returns a vector of supported features (for the [Account])
